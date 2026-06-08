@@ -714,13 +714,20 @@ import {
     }
 
     /* ─── Project Detail ──────────────────────────────────────────────────── */
-    function ProjectDetail({ project, onBack, onSetHours, onAddEntry, userToken }) {
+    function ProjectDetail({ project, onBack, onSetHours, onAddEntry, onSetTags, userToken }) {
       const [entryText, setEntryText] = useState('');
       const [syncing,   setSyncing]   = useState(false);
       const [syncMsg,   setSyncMsg]   = useState(null);
 
       // Once submitted (under review or accepted) the project is locked from edits.
       const isLocked = project.submissionStatus === 'under-review' || project.submissionStatus === 'accepted';
+
+      // Adapter so TagPicker (functional or plain setter) routes back to project state.
+      const setTags = (updater) => {
+        const current = project.tags || [];
+        const next = typeof updater === 'function' ? updater(current) : updater;
+        onSetTags?.(project.id, next);
+      };
 
       const syncHackatime = async () => {
         if (!userToken || !project.hackatimeProject) return;
@@ -838,6 +845,38 @@ import {
               )}
             </div>
 
+            {/* Tags — editable until the project is submitted */}
+            <div style={{ marginBottom: '44px' }}>
+              <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '13px', color: AMBER, marginBottom: '16px' }}>
+                Tags
+              </h2>
+              {isLocked ? (
+                project.tags?.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {project.tags.map(tag => (
+                      <span key={tag} style={{
+                        fontFamily: "'IBM Plex Mono'", fontSize: '11px',
+                        background: `${PURPLE}18`, color: PURPLE,
+                        border: `1px solid ${PURPLE}44`, borderRadius: '3px',
+                        padding: '3px 9px',
+                      }}>{tag}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, fontStyle: 'italic' }}>
+                    No tags were set for this project.
+                  </p>
+                )
+              ) : (
+                <>
+                  <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '10px', lineHeight: 1.7 }}>
+                    Pick genre / style tags for your game, or type your own. Up to {MAX_TAGS}.
+                  </p>
+                  <TagPicker tags={project.tags || []} setTags={setTags} />
+                </>
+              )}
+            </div>
+
             {/* Captain's Log */}
             <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '13px', color: AMBER, marginBottom: '24px' }}>
                Log
@@ -888,7 +927,7 @@ import {
     }
 
     /* ─── Projects Page ───────────────────────────────────────────────────── */
-    function ProjectsPage({ projects, totalHours, pendingHours, onCreate, onView, onSetHours, onAddEntry, currentProject, onOpenCreateModal, onSubmitToJam, userToken, user }) {
+    function ProjectsPage({ projects, totalHours, pendingHours, onCreate, onView, onSetHours, onAddEntry, onSetTags, currentProject, onOpenCreateModal, onSubmitToJam, userToken, user }) {
       const pct = Math.min((totalHours / 30) * 100, 100);
       const qualified = totalHours >= 30;
       const activeProjects  = projects.filter(p => p.submissionStatus !== 'under-review' && p.submissionStatus !== 'accepted');
@@ -915,6 +954,7 @@ import {
             onBack={() => onView(null)}
             onSetHours={onSetHours}
             onAddEntry={onAddEntry}
+            onSetTags={onSetTags}
             userToken={userToken}
           />
         );
@@ -1857,11 +1897,11 @@ import {
           <h1 style={{ fontFamily: "'Press Start 2P'", fontSize: '24px', color: AMBER, marginBottom: '8px', lineHeight: 1.4 }}>
             ARCADE
           </h1>
-          <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, marginBottom: games?.length > 0 ? '20px' : '36px' }}>
+          <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, marginBottom: '20px' }}>
             Browse accepted games — click a project to play, view the dev log, and leave a comment.
           </p>
 
-          {!loading && !error && games?.length > 0 && (
+          {!loading && !error && (
             <TagFilterBar
               allTags={allTags}
               selected={selectedTags}
@@ -3773,6 +3813,9 @@ import {
         ));
       }, []);
 
+      const handleSetTags = useCallback((id, tags) =>
+        setProjects(prev => prev.map(p => p.id === id ? { ...p, tags } : p)), []);
+
       const handleSubmitted = useCallback((projectId, recordId, itchUrl, selectedTier, tags) => {
         setProjects(prev => prev.map(p =>
           p.id === projectId
@@ -3795,6 +3838,7 @@ import {
               onView={setCurrentProject}
               onSetHours={handleSetHours}
               onAddEntry={handleAddEntry}
+              onSetTags={handleSetTags}
               currentProject={currentProject}
               onOpenCreateModal={() => setPage('create-project')}
               onSubmitToJam={() => setPage('submit')}
