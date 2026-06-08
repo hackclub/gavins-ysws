@@ -677,13 +677,17 @@ async function appendSubmissionComment(gameId, comment) {
   return comment;
 }
 
-async function syncJournalToSubmission(recordId, journalEntries) {
-  if (!AIRTABLE_PAT || !recordId || !Array.isArray(journalEntries)) return;
+async function syncJournalToSubmission(recordId, journalEntries, tags) {
+  if (!AIRTABLE_PAT || !recordId) return;
+  const fields = {};
+  if (Array.isArray(journalEntries)) fields[JOURNAL_FIELD] = JSON.stringify(journalEntries);
+  if (Array.isArray(tags) && tags.length > 0) fields[FIELDS.tags] = tags.join(', ');
+  if (!Object.keys(fields).length) return;
   try {
     const r = await fetch(airtableUrl(recordId), {
       method: 'PATCH',
       headers: airtableHeaders(),
-      body: JSON.stringify({ fields: { [JOURNAL_FIELD]: JSON.stringify(journalEntries) } }),
+      body: JSON.stringify({ fields }),
     });
     if (!r.ok) {
       const data = await r.json().catch(() => null);
@@ -1345,8 +1349,8 @@ app.post('/api/user/projects/save', async (req, res) => {
     // Mirror journal entries onto linked submission records so admin/arcade see fresh logs
     await Promise.all(
       sanitised
-        .filter(p => p.airtableRecordId && Array.isArray(p.journalEntries))
-        .map(p => syncJournalToSubmission(p.airtableRecordId, p.journalEntries))
+        .filter(p => p.airtableRecordId && (Array.isArray(p.journalEntries) || Array.isArray(p.tags)))
+        .map(p => syncJournalToSubmission(p.airtableRecordId, p.journalEntries, p.tags))
     );
 
     return res.json({ success: true, recordId: data.id });
