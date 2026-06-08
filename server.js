@@ -1346,8 +1346,11 @@ app.post('/api/user/projects/save', async (req, res) => {
     const { email, projects, recordId } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
 
-    // Strip headerImage (base64 blobs) — too large for Airtable text fields
-    const sanitised = (projects || []).map(p => ({ ...p, headerImage: null }));
+    // Strip base64 data URIs from headerImage — plain URLs are fine to store
+    const sanitised = (projects || []).map(p => ({
+      ...p,
+      headerImage: p.headerImage?.startsWith('data:') ? null : (p.headerImage || null),
+    }));
     const fields = { 'Email': email, 'Projects Data': JSON.stringify(sanitised) };
 
     const r = recordId

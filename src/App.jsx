@@ -622,11 +622,6 @@ import {
         ? +((chosen.total_seconds || 0) / 3600).toFixed(1)
         : 0;
 
-      const handleFile = e => {
-        const f = e.target.files[0];
-        if (f) setPreview(URL.createObjectURL(f));
-      };
-
       const handleSubmit = e => {
         e.preventDefault();
         if (!name.trim() || !htProject) return;
@@ -675,8 +670,14 @@ import {
             </div>
 
             <div>
-              <Label>HEADER IMAGE</Label>
-              <input type="file" accept="image/*" onChange={handleFile} style={{ width: '100%', cursor: 'pointer' }} />
+              <Label>HEADER IMAGE URL</Label>
+              <input
+                type="url"
+                value={preview || ''}
+                onChange={e => setPreview(e.target.value)}
+                placeholder="https://i.imgur.com/..."
+                style={{ width: '100%' }}
+              />
               {preview && (
                 <img src={preview} alt="preview"
                   style={{ width: '100%', height: '160px', objectFit: 'cover', marginTop: '12px', border: `1px solid ${PURPLE}` }} />
@@ -715,9 +716,10 @@ import {
 
     /* ─── Project Detail ──────────────────────────────────────────────────── */
     function ProjectDetail({ project, onBack, onSetHours, onAddEntry, userToken }) {
-      const [entryText, setEntryText] = useState('');
-      const [syncing,   setSyncing]   = useState(false);
-      const [syncMsg,   setSyncMsg]   = useState(null);
+      const [entryText,     setEntryText]     = useState('');
+      const [entryImageUrl, setEntryImageUrl] = useState('');
+      const [syncing,       setSyncing]       = useState(false);
+      const [syncMsg,       setSyncMsg]       = useState(null);
 
       // Once submitted (under review or accepted) the project is locked from edits.
       const isLocked = project.submissionStatus === 'under-review' || project.submissionStatus === 'accepted';
@@ -756,8 +758,9 @@ import {
 
       const doEntry = () => {
         if (!entryText.trim()) return;
-        onAddEntry(project.id, entryText.trim());
+        onAddEntry(project.id, entryText.trim(), entryImageUrl.trim() || null);
         setEntryText('');
+        setEntryImageUrl('');
       };
 
       return (
@@ -861,6 +864,13 @@ import {
                     <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: PURPLE }}>{entry.date}</div>
                   </div>
                   <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: CREAM, lineHeight: 1.7 }}>{entry.text}</div>
+                  {entry.imageUrl && (
+                    <img
+                      src={entry.imageUrl}
+                      alt=""
+                      style={{ marginTop: '12px', maxWidth: '100%', maxHeight: '360px', objectFit: 'contain', border: `1px solid ${PURPLE}`, borderRadius: '2px', display: 'block' }}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -875,8 +885,22 @@ import {
                 <textarea
                   rows={3} placeholder="What did you work on today?"
                   value={entryText} onChange={e => setEntryText(e.target.value)}
+                  style={{ width: '100%', marginBottom: '10px' }}
+                />
+                <input
+                  type="url"
+                  placeholder="Image URL (optional) — https://i.imgur.com/..."
+                  value={entryImageUrl}
+                  onChange={e => setEntryImageUrl(e.target.value)}
                   style={{ width: '100%', marginBottom: '12px' }}
                 />
+                {entryImageUrl.trim() && (
+                  <img
+                    src={entryImageUrl}
+                    alt="preview"
+                    style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain', border: `1px solid ${PURPLE}`, borderRadius: '2px', display: 'block', marginBottom: '12px' }}
+                  />
+                )}
                 <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '12px' }} onClick={doEntry}>
                   Add Entry
                 </ArcadeBtn>
@@ -3174,6 +3198,13 @@ import {
                       <div key={i} style={{ background: '#0f0820', border: `1px solid rgba(192,132,252,0.2)`, padding: '12px 14px', borderRadius: '2px' }}>
                         <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: PURPLE, marginBottom: '4px' }}>{entry.date}</div>
                         <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.6 }}>{entry.text}</div>
+                        {entry.imageUrl && (
+                          <img
+                            src={entry.imageUrl}
+                            alt=""
+                            style={{ marginTop: '10px', maxWidth: '100%', maxHeight: '360px', objectFit: 'contain', border: `1px solid ${PURPLE}`, borderRadius: '2px', display: 'block' }}
+                          />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3766,10 +3797,11 @@ import {
       const handleSetHours = useCallback((id, hours) =>
         setProjects(prev => prev.map(p => p.id === id ? { ...p, hours } : p)), []);
 
-      const handleAddEntry = useCallback((id, text) => {
+      const handleAddEntry = useCallback((id, text, imageUrl = null) => {
         const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const entry = imageUrl ? { date, text, imageUrl } : { date, text };
         setProjects(prev => prev.map(p =>
-          p.id === id ? { ...p, journalEntries: [...p.journalEntries, { date, text }] } : p
+          p.id === id ? { ...p, journalEntries: [...p.journalEntries, entry] } : p
         ));
       }, []);
 
