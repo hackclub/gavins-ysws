@@ -1269,6 +1269,17 @@ app.get('/api/games', async (req, res) => {
   }
 });
 
+// Temporary: shows which expected env vars the server can actually see (no values exposed)
+app.get('/api/debug-env', (req, res) => {
+  res.json({
+    HACKATIME_SECRET:  !!process.env.HACKATIME_SECRET,
+    HACKATIME_CLIENT_ID: !!process.env.HACKATIME_CLIENT_ID,
+    AIRTABLE_PAT:      !!process.env.AIRTABLE_PAT,
+    AIRTABLE_BASE_ID:  !!process.env.AIRTABLE_BASE_ID,
+    PORT:              process.env.PORT || '(not set)',
+  });
+});
+
 // Lets the frontend know which features are wired up without exposing secrets.
 app.get('/api/config', (req, res) => {
   res.json({
