@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+.review-decisions.json
+.shop-items.json
+.shop-orders.json
+.DS_Store
