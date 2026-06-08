@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+*.local
+.review-decisions.json
+.play-counts.json
+.comments.json
+.shop-items.json
+.shop-orders.json
