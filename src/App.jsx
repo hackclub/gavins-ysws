@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   startHackatimeLogin, exchangeHackatimeCode,
   getHackatimeMe, getHackatimeProjects, getHackatimeProjectHours,
@@ -36,6 +36,15 @@ import {
     const GREEND  = '#1a7a48';
     const CREAM   = '#f0f0e8';
     const MUTED   = '#6b6870';
+
+    // Curated genre / style tags offered as quick-pick chips when submitting a project.
+    // Users can also type their own. Keep lowercase to match tag normalization.
+    const PRESET_TAGS = [
+      'platformer', 'shooter', 'puzzle', 'rpg', 'adventure', 'arcade',
+      'strategy', 'simulation', 'racing', 'fighting', 'horror', 'rhythm',
+      'roguelike', 'metroidvania', 'survival', 'sandbox', 'action', 'multiplayer',
+    ];
+    const MAX_TAGS = 8;
 
     const REVIEW = {
       UNDER: 'Under Review',
@@ -524,11 +533,89 @@ import {
     }
 
     /* ─── Create Project Modal ────────────────────────────────────────────── */
+    /* ─── Reusable tag picker (preset toggles + custom input) ─────────────── */
+    function TagPicker({ tags, setTags }) {
+      const [tagInput, setTagInput] = useState('');
+      const full = tags.length >= MAX_TAGS;
+      const addCustom = () => {
+        const t = tagInput.trim().toLowerCase().replace(/[^a-z0-9\-]/g, '');
+        if (t && !tags.includes(t) && tags.length < MAX_TAGS) setTags(prev => [...prev, t]);
+        setTagInput('');
+      };
+      return (
+        <div>
+          {/* Preset tag toggles */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+            {PRESET_TAGS.map(tag => {
+              const active = tags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  disabled={!active && full}
+                  onClick={() => setTags(prev =>
+                    prev.includes(tag)
+                      ? prev.filter(t => t !== tag)
+                      : (prev.length < MAX_TAGS ? [...prev, tag] : prev))}
+                  style={{
+                    fontFamily: "'IBM Plex Mono'", fontSize: '11px',
+                    background: active ? PURPLE : `${PURPLE}18`,
+                    color: active ? BG : PURPLE,
+                    border: `1px solid ${active ? PURPLE : `${PURPLE}44`}`,
+                    borderRadius: '3px', padding: '3px 9px',
+                    cursor: (!active && full) ? 'not-allowed' : 'pointer',
+                    opacity: (!active && full) ? 0.4 : 1,
+                    transition: 'background 0.12s, color 0.12s',
+                  }}
+                >{tag}</button>
+              );
+            })}
+          </div>
+          {/* Custom (non-preset) selected tags, removable */}
+          {tags.some(t => !PRESET_TAGS.includes(t)) && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              {tags.filter(t => !PRESET_TAGS.includes(t)).map(tag => (
+                <span key={tag} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  fontFamily: "'IBM Plex Mono'", fontSize: '11px',
+                  background: `${PURPLE}22`, color: PURPLE,
+                  border: `1px solid ${PURPLE}55`, borderRadius: '3px',
+                  padding: '3px 8px',
+                }}>
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => setTags(prev => prev.filter(t => t !== tag))}
+                    style={{ background: 'none', border: 'none', color: PURPLE, cursor: 'pointer', padding: '0', lineHeight: 1, fontSize: '13px' }}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <input
+            type="text"
+            value={tagInput}
+            onChange={e => setTagInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addCustom(); }
+            }}
+            placeholder="add a custom tag…"
+            disabled={full}
+            style={{ width: '100%' }}
+          />
+          <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginTop: '6px' }}>
+            {tags.length}/{MAX_TAGS} selected
+          </div>
+        </div>
+      );
+    }
+
     function CreateProjectPage({ onCreate, onCancel, htProjects = [] }) {
       const [name,       setName]       = useState('');
       const [desc,       setDesc]       = useState('');
       const [preview,    setPreview]    = useState(null);
       const [htProject,  setHtProject]  = useState('');
+      const [tags,       setTags]       = useState([]);
 
       const chosen = htProjects.find(p => (p.name || p.key) === htProject);
       const chosenHours = chosen
@@ -551,6 +638,7 @@ import {
           hours: chosenHours,
           journalEntries: [],
           hackatimeProject: htProject,
+          tags,
         });
       };
 
@@ -576,6 +664,14 @@ import {
             <div>
               <Label>DESCRIPTION</Label>
               <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={5} style={{ width: '100%' }} />
+            </div>
+
+            <div>
+              <Label>TAGS</Label>
+              <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '8px', lineHeight: 1.7 }}>
+                Pick genre / style tags for your game, or type your own. Up to {MAX_TAGS}.
+              </p>
+              <TagPicker tags={tags} setTags={setTags} />
             </div>
 
             <div>
@@ -1659,8 +1755,54 @@ import {
       );
     }
 
+    /* ─── Reusable tag filter bar (match-any) ─────────────────────────────── */
+    function TagFilterBar({ allTags, selected, onToggle, onClear, accent = PURPLE, style = {} }) {
+      const tags = allTags || [];
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', ...style }}>
+          <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginRight: '2px' }}>
+            Filter by tag:
+          </span>
+          {tags.length === 0 && (
+            <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, fontStyle: 'italic' }}>
+              no tags yet
+            </span>
+          )}
+          {tags.map(tag => {
+            const active = selected.includes(tag);
+            return (
+              <button key={tag} onClick={() => onToggle(tag)} style={{
+                fontFamily: "'IBM Plex Mono'", fontSize: '11px',
+                background: active ? accent : `${accent}18`,
+                color: active ? BG : accent,
+                border: `1px solid ${active ? accent : `${accent}44`}`,
+                borderRadius: '3px', padding: '4px 11px', cursor: 'pointer',
+                transition: 'background 0.12s, color 0.12s',
+              }}>{tag}</button>
+            );
+          })}
+          {selected.length > 0 && (
+            <button onClick={onClear} style={{
+              fontFamily: "'IBM Plex Mono'", fontSize: '11px',
+              background: 'none', color: CORAL,
+              border: `1px solid ${CORAL}44`, borderRadius: '3px',
+              padding: '4px 11px', cursor: 'pointer',
+            }}>✕ Clear</button>
+          )}
+        </div>
+      );
+    }
+
+    // Collect unique, sorted tags from a list of objects each having a `.tags` array
+    function collectTags(items) {
+      const set = new Set();
+      (items || []).forEach(it => (it?.tags || []).forEach(t => t && set.add(t)));
+      return [...set].sort();
+    }
+
     function GamesPage({ user }) {
       const [games,    setGames]    = useState(null);
+      const [selectedTags, setSelectedTags] = useState([]);
       const [loading,  setLoading]  = useState(true);
       const [error,    setError]    = useState(null);
       const [viewing,  setViewing]  = useState(null); // game open in detail page
@@ -1693,6 +1835,13 @@ import {
         setGames(prev => prev?.map(g => g.id === game.id ? { ...g, plays: (g.plays || 0) + 1 } : g));
       };
 
+      const allTags = useMemo(() => collectTags(games), [games]);
+      const toggleTag = (tag) => setSelectedTags(prev =>
+        prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+      const visibleGames = selectedTags.length === 0
+        ? games
+        : (games || []).filter(g => selectedTags.some(t => (g.tags || []).includes(t)));
+
       if (viewing) {
         return (
           <GameDetailView
@@ -1708,19 +1857,38 @@ import {
           <h1 style={{ fontFamily: "'Press Start 2P'", fontSize: '24px', color: AMBER, marginBottom: '8px', lineHeight: 1.4 }}>
             ARCADE
           </h1>
-          <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, marginBottom: '36px' }}>
+          <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, marginBottom: games?.length > 0 ? '20px' : '36px' }}>
             Browse accepted games — click a project to play, view the dev log, and leave a comment.
           </p>
+
+          {!loading && !error && games?.length > 0 && (
+            <TagFilterBar
+              allTags={allTags}
+              selected={selectedTags}
+              onToggle={toggleTag}
+              onClear={() => setSelectedTags([])}
+              style={{ marginBottom: '32px' }}
+            />
+          )}
 
           {loading && <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: MUTED }}>Loading games<Cursor /></div>}
           {error   && <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: CORAL }}>Failed to load games: {error}</div>}
           {!loading && !error && games?.length === 0 && (
             <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: MUTED }}>No accepted games yet. Check back soon<Cursor /></div>
           )}
+          {!loading && !error && games?.length > 0 && visibleGames.length === 0 && (
+            <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: MUTED }}>
+              No games match {selectedTags.length > 1 ? 'those tags' : 'that tag'}.{' '}
+              <button onClick={() => setSelectedTags([])} style={{
+                background: 'none', border: 'none', color: PURPLE, cursor: 'pointer',
+                fontFamily: "'IBM Plex Mono'", fontSize: '14px', textDecoration: 'underline', padding: 0,
+              }}>Clear filter</button>
+            </div>
+          )}
 
-          {!loading && !error && games?.length > 0 && (
+          {!loading && !error && visibleGames.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
-              {games.map(game => (
+              {visibleGames.map(game => (
                 <div key={game.id} style={{
                   background: CARD, border: `1px solid ${AMBER}33`,
                   borderRadius: '8px', overflow: 'hidden',
@@ -1749,14 +1917,18 @@ import {
                     </div>
                     {game.tags?.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                        {game.tags.map(tag => (
-                          <span key={tag} style={{
-                            fontFamily: "'IBM Plex Mono'", fontSize: '10px',
-                            background: `${PURPLE}18`, color: PURPLE,
-                            border: `1px solid ${PURPLE}44`, borderRadius: '3px',
-                            padding: '2px 7px',
-                          }}>{tag}</span>
-                        ))}
+                        {game.tags.map(tag => {
+                          const active = selectedTags.includes(tag);
+                          return (
+                            <button key={tag} onClick={() => toggleTag(tag)} title={`Filter by "${tag}"`} style={{
+                              fontFamily: "'IBM Plex Mono'", fontSize: '10px',
+                              background: active ? PURPLE : `${PURPLE}18`,
+                              color: active ? BG : PURPLE,
+                              border: `1px solid ${active ? PURPLE : `${PURPLE}44`}`,
+                              borderRadius: '3px', padding: '2px 7px', cursor: 'pointer',
+                            }}>{tag}</button>
+                          );
+                        })}
                       </div>
                     )}
                     <ArcadeBtn bg={AMBER} style={{ fontSize: '11px', marginTop: 'auto' }} onClick={() => openDetail(game)}>
@@ -2506,7 +2678,6 @@ import {
       const [status,       setStatus]       = useState(null);
       const [selectedTier, setSelectedTier] = useState(null);
       const [tags,         setTags]         = useState([]);
-      const [tagInput,     setTagInput]     = useState('');
 
       const SUBMIT_TIERS = [
         { num: 1, label: 'Tier 1', range: '5–8 hrs',   min: 5,  color: AMBER,     badge: null },
@@ -2526,6 +2697,12 @@ import {
         if (user.firstName && !firstName) setFirstName(user.firstName);
         if (user.lastName && !lastName) setLastName(user.lastName);
       }, [user]);
+
+      // Tags are chosen at project creation — carry them through on submit.
+      useEffect(() => {
+        setTags(selectedProject?.tags || []);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [selectedId]);
 
       if (!user) {
         return (
@@ -2722,49 +2899,28 @@ import {
               <Label>GITHUB USERNAME</Label>
               <input type="text" value={githubUser} onChange={e => setGithubUser(e.target.value)} placeholder="your-github-username" style={{ width: '100%' }} />
             </div>
-            {/* ── Tags ── */}
-            <div>
-              <Label>TAGS</Label>
-              <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '8px', lineHeight: 1.7 }}>
-                Add genre / style tags (e.g. platformer, shooter, puzzle). Press Enter or comma to add.
-              </p>
-              {/* Tag chips */}
-              {tags.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-                  {tags.map(tag => (
-                    <span key={tag} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '5px',
-                      fontFamily: "'IBM Plex Mono'", fontSize: '11px',
-                      background: `${PURPLE}22`, color: PURPLE,
-                      border: `1px solid ${PURPLE}55`, borderRadius: '3px',
-                      padding: '3px 8px',
-                    }}>
-                      {tag}
-                      <button
-                        type="button"
-                        onClick={() => setTags(prev => prev.filter(t => t !== tag))}
-                        style={{ background: 'none', border: 'none', color: PURPLE, cursor: 'pointer', padding: '0', lineHeight: 1, fontSize: '13px' }}
-                      >×</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <input
-                type="text"
-                value={tagInput}
-                onChange={e => setTagInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    const t = tagInput.trim().toLowerCase().replace(/[^a-z0-9\-]/g, '');
-                    if (t && !tags.includes(t) && tags.length < 8) setTags(prev => [...prev, t]);
-                    setTagInput('');
-                  }
-                }}
-                placeholder="platformer, shooter, puzzle…"
-                style={{ width: '100%' }}
-              />
-            </div>
+            {/* ── Tags (chosen when the project was created) ── */}
+            {selectedProject && (
+              <div>
+                <Label>TAGS</Label>
+                {tags.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {tags.map(tag => (
+                      <span key={tag} style={{
+                        fontFamily: "'IBM Plex Mono'", fontSize: '11px',
+                        background: `${PURPLE}18`, color: PURPLE,
+                        border: `1px solid ${PURPLE}44`, borderRadius: '3px',
+                        padding: '3px 9px',
+                      }}>{tag}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, lineHeight: 1.7 }}>
+                    No tags on this project — add them when creating a project.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <Label>ITCH.IO EMBED</Label>
@@ -2817,7 +2973,7 @@ import {
     }
 
     /* ─── Admin list row ──────────────────────────────────────────────────── */
-    function AdminSubmissionRow({ record, fields, onView }) {
+    function AdminSubmissionRow({ record, fields, onView, tags = [], selectedTags = [], onToggleTag }) {
       const v = record.fields || {};
       const f = fields || {};
       const desc = v[f.description] || v['Description'] || '';
@@ -2840,6 +2996,22 @@ import {
               {submitter}
               {(v[f.hours] ?? v['Optional - Override Hours Spent']) != null ? ` · ${v[f.hours] ?? v['Optional - Override Hours Spent']}h` : ''}
             </div>
+            {tags.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '8px' }}>
+                {tags.map(tag => {
+                  const active = selectedTags.includes(tag);
+                  return (
+                    <button key={tag} onClick={() => onToggleTag?.(tag)} title={`Filter by "${tag}"`} style={{
+                      fontFamily: "'IBM Plex Mono'", fontSize: '10px',
+                      background: active ? PURPLE : `${PURPLE}18`,
+                      color: active ? BG : PURPLE,
+                      border: `1px solid ${active ? PURPLE : `${PURPLE}44`}`,
+                      borderRadius: '3px', padding: '2px 7px', cursor: 'pointer',
+                    }}>{tag}</button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <span style={{
             fontFamily: "'IBM Plex Mono'", fontSize: '11px', fontWeight: 700,
@@ -3268,6 +3440,7 @@ import {
       const [error,        setError]        = useState(null);
       const [tab,          setTab]          = useState('pending');
       const [viewingId,    setViewingId]    = useState(null);
+      const [selectedTags, setSelectedTags] = useState([]);
 
       const token = user?.token;
 
@@ -3319,6 +3492,10 @@ import {
       }
 
       const getReviewSt = r => r.fields?.[fields?.reviewStatus || 'Review Status'] || '';
+      const recordTags = r => {
+        const raw = (r.fields || {})[fields?.tags || 'Tags'] || '';
+        return raw ? raw.split(',').map(t => t.trim()).filter(Boolean) : [];
+      };
       const pendingRecords  = records.filter(r => {
         const s = normalizeReviewStatus(getReviewSt(r));
         return !s || s === 'under-review';
@@ -3327,7 +3504,13 @@ import {
         const s = normalizeReviewStatus(getReviewSt(r));
         return s === 'accepted' || s === 'rejected';
       });
-      const shown = tab === 'pending' ? pendingRecords : reviewedRecords;
+      const tabRecords = tab === 'pending' ? pendingRecords : reviewedRecords;
+      const allTags = collectTags(tabRecords.map(r => ({ tags: recordTags(r) })));
+      const toggleTag = (tag) => setSelectedTags(prev =>
+        prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+      const shown = selectedTags.length === 0
+        ? tabRecords
+        : tabRecords.filter(r => selectedTags.some(t => recordTags(r).includes(t)));
       const viewingRecord = tab !== 'shop' && viewingId ? records.find(r => r.id === viewingId) : null;
 
       if (viewingRecord) {
@@ -3357,7 +3540,7 @@ import {
               { key: 'reviewed', label: 'Reviewed',       count: reviewedRecords.length, color: GREEN  },
               { key: 'shop',     label: 'Shop',           count: null,                   color: PURPLE },
             ].map(({ key, label, count, color }) => (
-              <button key={key} onClick={() => { setTab(key); setViewingId(null); }} style={{
+              <button key={key} onClick={() => { setTab(key); setViewingId(null); setSelectedTags([]); }} style={{
                 fontFamily: "'Press Start 2P'", fontSize: '10px',
                 padding: '10px 20px',
                 background: tab === key ? `${color}18` : 'transparent',
@@ -3382,10 +3565,22 @@ import {
 
           {tab === 'shop' && <AdminShopTab token={token} />}
 
+          {tab !== 'shop' && allTags.length > 0 && (
+            <TagFilterBar
+              allTags={allTags}
+              selected={selectedTags}
+              onToggle={toggleTag}
+              onClear={() => setSelectedTags([])}
+              style={{ marginBottom: '24px' }}
+            />
+          )}
+
           {tab !== 'shop' && error && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CORAL, marginBottom: '20px' }}>{error}</p>}
           {tab !== 'shop' && shown.length === 0 && (
             <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: MUTED, fontStyle: 'italic' }}>
-              {tab === 'pending' ? 'No submissions awaiting review.' : 'No reviewed submissions yet.'}
+              {selectedTags.length > 0
+                ? `No ${tab === 'pending' ? 'pending' : 'reviewed'} submissions match the selected ${selectedTags.length > 1 ? 'tags' : 'tag'}.`
+                : (tab === 'pending' ? 'No submissions awaiting review.' : 'No reviewed submissions yet.')}
             </p>
           )}
           {tab !== 'shop' && (
@@ -3395,6 +3590,9 @@ import {
                   key={r.id}
                   record={r}
                   fields={fields}
+                  tags={recordTags(r)}
+                  selectedTags={selectedTags}
+                  onToggleTag={toggleTag}
                   onView={() => setViewingId(r.id)}
                 />
               ))}
