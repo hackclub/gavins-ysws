@@ -33,11 +33,13 @@ export async function getServerConfig() {
 
 // Kick off the Hackatime OAuth login by redirecting the browser.
 export function startHackatimeLogin(clientId = HACKATIME_CLIENT_ID) {
+  const nonce = crypto.randomUUID();
+  sessionStorage.setItem('oauth_state', nonce);
   const url = new URL(HACKATIME_AUTHORIZE);
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri());
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('state', 'hackatime');
+  url.searchParams.set('state', nonce);
   window.location.href = url.toString();
 }
 
@@ -69,6 +71,33 @@ export function adminReview(accessToken, recordId, status) {
   return postJSON('/api/admin/review', { accessToken, recordId, status });
 }
 
+export function adminAdjust(accessToken, recordId, hours, plays) {
+  const body = { accessToken, recordId };
+  if (hours !== undefined && hours !== null) body.hours = hours;
+  if (plays !== undefined && plays !== null) body.plays = plays;
+  return postJSON('/api/admin/adjust', body);
+}
+
+export function adminSetUserPlays(accessToken, email, plays) {
+  return postJSON('/api/admin/set-user-plays', { accessToken, email, plays });
+}
+
+export function getUserTotalPlays(email, gameIds, accessToken) {
+  return postJSON('/api/user/plays', { email, gameIds, accessToken });
+}
+
+export function adminListAdmins(accessToken) {
+  return postJSON('/api/admin/admins/list', { accessToken });
+}
+
+export function adminAddAdmin(accessToken, email, tier) {
+  return postJSON('/api/admin/admins/add', { accessToken, email, tier });
+}
+
+export function adminRemoveAdmin(accessToken, email) {
+  return postJSON('/api/admin/admins/remove', { accessToken, email });
+}
+
 export function adminUserProjects(accessToken, email) {
   return postJSON('/api/admin/user-projects', { accessToken, email });
 }
@@ -89,20 +118,20 @@ export function adminAddSubmitterNote(accessToken, email, text) {
   return postJSON('/api/admin/submitter-notes/add', { accessToken, email, text });
 }
 
-export function getMySubmissions(email) {
-  return postJSON('/api/my-submissions', { email });
+export function getMySubmissions(email, accessToken) {
+  return postJSON('/api/my-submissions', { email, accessToken });
 }
 
 export function getHackatimeProjectHours(accessToken, projectName) {
   return postJSON('/api/hackatime/project-hours', { accessToken, projectName });
 }
 
-export function loadUserProjects(email) {
-  return postJSON('/api/user/projects/load', { email });
+export function loadUserProjects(email, accessToken) {
+  return postJSON('/api/user/projects/load', { email, accessToken });
 }
 
-export function saveUserProjects(email, projects, recordId) {
-  return postJSON('/api/user/projects/save', { email, projects, recordId });
+export function saveUserProjects(email, projects, recordId, accessToken) {
+  return postJSON('/api/user/projects/save', { email, projects, recordId, accessToken });
 }
 
 // Upload a base64 data-URL image (journal screenshot); returns { url }.
@@ -117,8 +146,8 @@ export async function getPublishedGames() {
   return data;
 }
 
-export function recordPlay(gameId) {
-  return postJSON('/api/play', { gameId });
+export function recordPlay(gameId, accessToken) {
+  return postJSON('/api/play', { gameId, accessToken });
 }
 
 export function getPlayCounts(gameIds) {
@@ -132,8 +161,8 @@ export async function getComments(gameId) {
   return data;
 }
 
-export function postComment(gameId, author, text) {
-  return postJSON('/api/comments', { gameId, author, text });
+export function postComment(gameId, author, text, accessToken) {
+  return postJSON('/api/comments', { gameId, author, text, accessToken });
 }
 
 export async function getGameLogs(gameId) {
@@ -150,8 +179,8 @@ export async function getShopItems() {
   return data;
 }
 
-export function placeShopOrder(email, itemId, totalHours, totalPlays) {
-  return postJSON('/api/shop/order', { email, itemId, totalHours, totalPlays });
+export function placeShopOrder(email, itemId, accessToken) {
+  return postJSON('/api/shop/order', { email, itemId, accessToken });
 }
 
 export function adminShopItems(accessToken) {
