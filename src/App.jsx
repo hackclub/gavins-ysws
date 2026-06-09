@@ -3,7 +3,8 @@ import {
   startHackatimeLogin, exchangeHackatimeCode,
   getHackatimeMe, getHackatimeProjects, getHackatimeProjectHours,
   submitProject, adminCheck, adminList, adminReview, adminUserProjects,
-  loadUserProjects, saveUserProjects, getMySubmissions, getPublishedGames,
+  adminNotes, adminAddNote, adminSubmitterNotes, adminAddSubmitterNote,
+  loadUserProjects, saveUserProjects, uploadImage, getMySubmissions, getPublishedGames,
   recordPlay, getPlayCounts, getComments, postComment, getGameLogs,
   getShopItems, placeShopOrder,
   adminShopItems, adminShopItemSave, adminShopItemDelete,
@@ -20,6 +21,49 @@ import {
         const entries = JSON.parse(raw);
         return Array.isArray(entries) && entries.length > 0 ? entries : null;
       } catch { return null; }
+    }
+
+    // Downscale an image File/Blob and return a compressed JPEG data URL,
+    // keeping uploads small enough for the server's body limit.
+    function fileToCompressedDataUrl(file, maxDim = 1600, quality = 0.85) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Could not read image'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Invalid image file'));
+          img.onload = () => {
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const width  = Math.max(1, Math.round(img.width  * scale));
+            const height = Math.max(1, Math.round(img.height * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Thumbnail row for a journal entry's attached screenshots; click to open full size.
+    function JournalImages({ images, size = 120 }) {
+      if (!images || images.length === 0) return null;
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+          {images.map((url, i) => (
+            <a key={url} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', lineHeight: 0 }}>
+              <img src={url} alt={`screenshot ${i + 1}`} style={{
+                height: `${size}px`, width: 'auto', maxWidth: '100%',
+                borderRadius: '3px', border: `1px solid ${PURPLE}44`,
+                display: 'block', cursor: 'pointer',
+              }} />
+            </a>
+          ))}
+        </div>
+      );
     }
 
     /* ─── Palette ─────────────────────────────────────────────────────────── */
@@ -715,7 +759,11 @@ import {
 
     /* ─── Project Detail ──────────────────────────────────────────────────── */
     function ProjectDetail({ project, onBack, onSetHours, onAddEntry, onSetTags, userToken }) {
-      const [entryText, setEntryText] = useState('');
+      const [entryText,   setEntryText]   = useState('');
+      const [entryImages, setEntryImages] = useState([]);   // uploaded image URLs for the entry being composed
+      const [uploading,   setUploading]   = useState(false);
+      const [uploadErr,   setUploadErr]   = useState(null);
+      const fileInputRef = useRef(null);
       const [syncing,   setSyncing]   = useState(false);
       const [syncMsg,   setSyncMsg]   = useState(null);
 
@@ -761,10 +809,36 @@ import {
         return () => { cancelled = true; };
       }, [userToken, project.id, project.hackatimeProject, onSetHours]);
 
+      const addImageFiles = async (files) => {
+        const images = Array.from(files || []).filter(f => f.type.startsWith('image/'));
+        if (images.length === 0) return;
+        setUploading(true);
+        setUploadErr(null);
+        try {
+          for (const file of images) {
+            const dataUrl = await fileToCompressedDataUrl(file);
+            const { url } = await uploadImage(dataUrl);
+            setEntryImages(prev => [...prev, url]);
+          }
+        } catch (err) {
+          setUploadErr(err.message || 'Image upload failed');
+        } finally {
+          setUploading(false);
+        }
+      };
+
+      const handlePaste = (e) => {
+        const items = Array.from(e.clipboardData?.items || []);
+        const files = items.filter(it => it.kind === 'file' && it.type.startsWith('image/')).map(it => it.getAsFile());
+        if (files.length > 0) { e.preventDefault(); addImageFiles(files); }
+      };
+
       const doEntry = () => {
-        if (!entryText.trim()) return;
-        onAddEntry(project.id, entryText.trim());
+        if (!entryText.trim() && entryImages.length === 0) return;
+        onAddEntry(project.id, entryText.trim(), entryImages);
         setEntryText('');
+        setEntryImages([]);
+        setUploadErr(null);
       };
 
       return (
@@ -900,6 +974,7 @@ import {
                     <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: PURPLE }}>{entry.date}</div>
                   </div>
                   <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: CREAM, lineHeight: 1.7 }}>{entry.text}</div>
+                  <JournalImages images={entry.images} size={140} />
                 </div>
               ))}
             </div>
@@ -912,13 +987,66 @@ import {
             ) : (
               <>
                 <textarea
-                  rows={3} placeholder="What did you work on today?"
+                  rows={3} placeholder="What did you work on today? (paste a screenshot to attach it)"
                   value={entryText} onChange={e => setEntryText(e.target.value)}
+                  onPaste={handlePaste}
                   style={{ width: '100%', marginBottom: '12px' }}
                 />
-                <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '12px' }} onClick={doEntry}>
-                  Add Entry
-                </ArcadeBtn>
+
+                {/* Attached image thumbnails */}
+                {entryImages.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                    {entryImages.map((url, i) => (
+                      <div key={url} style={{ position: 'relative' }}>
+                        <img src={url} alt={`attachment ${i + 1}`} style={{
+                          width: '96px', height: '96px', objectFit: 'cover',
+                          borderRadius: '3px', border: `1px solid ${PURPLE}55`, display: 'block',
+                        }} />
+                        <button
+                          type="button"
+                          onClick={() => setEntryImages(prev => prev.filter(u => u !== url))}
+                          title="Remove image"
+                          style={{
+                            position: 'absolute', top: '-8px', right: '-8px',
+                            width: '22px', height: '22px', borderRadius: '50%',
+                            background: CORAL, color: 'white', border: 'none', cursor: 'pointer',
+                            fontSize: '13px', lineHeight: 1, fontFamily: "'IBM Plex Mono'",
+                          }}
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={e => { addImageFiles(e.target.files); e.target.value = ''; }}
+                  style={{ display: 'none' }}
+                />
+
+                {uploadErr && (
+                  <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: CORAL, marginBottom: '10px' }}>{uploadErr}</p>
+                )}
+
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '12px', opacity: uploading ? 0.6 : 1 }} onClick={doEntry}>
+                    Add Entry
+                  </ArcadeBtn>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    style={{
+                      background: PURPLED, border: `1px solid ${PURPLE}`, color: 'white',
+                      borderRadius: '3px', padding: '9px 16px', cursor: uploading ? 'wait' : 'pointer',
+                      fontFamily: "'IBM Plex Mono'", fontSize: '12px', fontWeight: 700,
+                      opacity: uploading ? 0.7 : 1,
+                    }}
+                  >{uploading ? 'Uploading…' : '📎 Attach image'}</button>
+                </div>
               </>
             )}
           </div>
@@ -1774,6 +1902,7 @@ import {
                         }}>
                           <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: PURPLE, marginBottom: '6px' }}>{entry.date}</div>
                           <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.7 }}>{entry.text}</div>
+                          <JournalImages images={entry.images} size={110} />
                         </div>
                       ))}
                     </div>
@@ -2267,7 +2396,7 @@ import {
       },
     ];
 
-    function GuidelinesPage() {
+    function GuidelinesPage({ onGoToProjects }) {
       return (
         <div className="fade-in" style={{ padding: '48px 40px 64px', maxWidth: '760px', margin: '0 auto' }}>
           {/* Header */}
@@ -2331,18 +2460,26 @@ import {
           </div>
 
           {/* Footer CTA */}
-          <div style={{
-            marginTop: '48px', padding: '28px 32px',
-            background: `${AMBER}0f`, border: `1px solid ${AMBER}44`,
-            borderRadius: '4px', textAlign: 'center',
-          }}>
+          <button
+            type="button"
+            onClick={onGoToProjects}
+            style={{
+              display: 'block', width: '100%',
+              marginTop: '48px', padding: '28px 32px',
+              background: `${AMBER}0f`, border: `1px solid ${AMBER}44`,
+              borderRadius: '4px', textAlign: 'center', cursor: 'pointer',
+              transition: 'background 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${AMBER}1f`; e.currentTarget.style.borderColor = AMBER; }}
+            onMouseLeave={e => { e.currentTarget.style.background = `${AMBER}0f`; e.currentTarget.style.borderColor = `${AMBER}44`; }}
+          >
             <p style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color: AMBER, marginBottom: '8px', lineHeight: 1.8 }}>
-              Ready to submit?
+              Ready to submit? ›
             </p>
             <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, lineHeight: 1.8 }}>
               Head to the Projects page, finish your entry, and hit Submit.
             </p>
-          </div>
+          </button>
         </div>
       );
     }
@@ -3065,6 +3202,49 @@ import {
       );
     }
 
+    /* ─── Reusable internal admin-notes panel ─────────────────────────────── */
+    function AdminNotePanel({ title, subtitle, notes, value, onChange, onPost, posting, placeholder, accent = AMBER }) {
+      return (
+        <div style={{ borderTop: `2px solid ${MUTED}`, padding: '16px' }}>
+          <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: accent, marginBottom: subtitle ? '4px' : '10px', lineHeight: 1.6 }}>{title}</div>
+          {subtitle && (
+            <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginBottom: '10px', lineHeight: 1.6 }}>{subtitle}</div>
+          )}
+          {notes.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px', maxHeight: '200px', overflowY: 'auto' }}>
+              {notes.map((n, i) => (
+                <div key={i} style={{ background: '#0f0820', border: `1px solid ${MUTED}`, borderRadius: '2px', padding: '8px 10px' }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.text}</div>
+                  <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '9px', color: MUTED, marginTop: '5px' }}>
+                    {n.author}{n.date ? ` · ${new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <textarea
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder}
+            rows={3}
+            style={{
+              width: '100%', resize: 'vertical', boxSizing: 'border-box',
+              background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
+              fontFamily: "'IBM Plex Mono'", fontSize: '12px', padding: '10px',
+              borderRadius: '2px', marginBottom: '10px',
+            }}
+          />
+          <ArcadeBtn
+            bg={accent}
+            style={{ width: '100%', fontSize: '10px', opacity: (posting || !value.trim()) ? 0.5 : 1 }}
+            onClick={onPost}
+          >
+            {posting ? '…' : 'Add Note'}
+          </ArcadeBtn>
+        </div>
+      );
+    }
+
     /* ─── Admin project review screen ─────────────────────────────────────── */
     function AdminReviewView({ record, fields, token, user, onBack, onReviewed }) {
       const [logs,        setLogs]        = useState(null);
@@ -3074,6 +3254,14 @@ import {
       const [reviewError, setReviewError] = useState(null);
       const [feedback,    setFeedback]    = useState('');
       const [postingFb,   setPostingFb]   = useState(false);
+
+      // Internal admin notes (never shown to the submitter)
+      const [projectNotes,        setProjectNotes]        = useState([]);
+      const [projectNoteInput,    setProjectNoteInput]    = useState('');
+      const [postingProjectNote,  setPostingProjectNote]  = useState(false);
+      const [submitterNotes,      setSubmitterNotes]      = useState([]);
+      const [submitterNoteInput,  setSubmitterNoteInput]  = useState('');
+      const [postingSubmitterNote, setPostingSubmitterNote] = useState(false);
 
       const v = record.fields || {};
       const f = fields || {};
@@ -3105,6 +3293,39 @@ import {
       }, [token, email, record.id, submittedName, journalOnRecord]);
 
       useEffect(() => { loadLogs(); }, [loadLogs]);
+
+      // Load internal admin notes (per-project + per-submitter).
+      useEffect(() => {
+        if (!token) return;
+        adminNotes(token, record.id).then(d => setProjectNotes(d.notes || [])).catch(() => {});
+      }, [token, record.id]);
+
+      useEffect(() => {
+        if (!token || !email) return;
+        adminSubmitterNotes(token, email).then(d => setSubmitterNotes(d.notes || [])).catch(() => {});
+      }, [token, email]);
+
+      const postProjectNote = async () => {
+        if (!projectNoteInput.trim() || postingProjectNote) return;
+        setPostingProjectNote(true);
+        try {
+          const d = await adminAddNote(token, record.id, projectNoteInput);
+          setProjectNotes(d.notes || []);
+          setProjectNoteInput('');
+        } catch (err) { setReviewError(err.message); }
+        finally { setPostingProjectNote(false); }
+      };
+
+      const postSubmitterNote = async () => {
+        if (!submitterNoteInput.trim() || postingSubmitterNote) return;
+        setPostingSubmitterNote(true);
+        try {
+          const d = await adminAddSubmitterNote(token, email, submitterNoteInput);
+          setSubmitterNotes(d.notes || []);
+          setSubmitterNoteInput('');
+        } catch (err) { setReviewError(err.message); }
+        finally { setPostingSubmitterNote(false); }
+      };
 
       const matched = logs?.find(p =>
         p.name === submittedName
@@ -3214,6 +3435,7 @@ import {
                       <div key={i} style={{ background: '#0f0820', border: `1px solid rgba(192,132,252,0.2)`, padding: '12px 14px', borderRadius: '2px' }}>
                         <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: PURPLE, marginBottom: '4px' }}>{entry.date}</div>
                         <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.6 }}>{entry.text}</div>
+                        <JournalImages images={entry.images} size={110} />
                       </div>
                     ))}
                   </div>
@@ -3289,6 +3511,30 @@ import {
                   {postingFb ? '…' : 'Send Feedback'}
                 </ArcadeBtn>
               </div>
+
+              <AdminNotePanel
+                title="ADMIN NOTES"
+                subtitle="Internal — not shown to the submitter. Visible to admins on this project."
+                notes={projectNotes}
+                value={projectNoteInput}
+                onChange={setProjectNoteInput}
+                onPost={postProjectNote}
+                posting={postingProjectNote}
+                placeholder="Private notes about this submission…"
+                accent={AMBER}
+              />
+
+              <AdminNotePanel
+                title="NOTES ON SUBMITTER"
+                subtitle={`Internal — shared across every project by ${submitter}. Admins only.`}
+                notes={submitterNotes}
+                value={submitterNoteInput}
+                onChange={setSubmitterNoteInput}
+                onPost={postSubmitterNote}
+                posting={postingSubmitterNote}
+                placeholder="Private notes about this person…"
+                accent={GREEN}
+              />
             </div>
           </div>
 
@@ -3806,10 +4052,12 @@ import {
       const handleSetHours = useCallback((id, hours) =>
         setProjects(prev => prev.map(p => p.id === id ? { ...p, hours } : p)), []);
 
-      const handleAddEntry = useCallback((id, text) => {
+      const handleAddEntry = useCallback((id, text, images = []) => {
         const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const entry = { date, text };
+        if (images.length > 0) entry.images = images;
         setProjects(prev => prev.map(p =>
-          p.id === id ? { ...p, journalEntries: [...p.journalEntries, { date, text }] } : p
+          p.id === id ? { ...p, journalEntries: [...p.journalEntries, entry] } : p
         ));
       }, []);
 
@@ -3868,7 +4116,7 @@ import {
           case 'shop':       return <ShopPage projects={projects} totalHours={totalHours} user={user} />;
           case 'arcade':     return <GamesPage user={user} />;
           case 'faq':        return <FAQPage />;
-          case 'guidelines': return <GuidelinesPage />;
+          case 'guidelines': return <GuidelinesPage onGoToProjects={() => handleSetPage('projects')} />;
           default:         return <HomePage totalHours={totalHours} />;
         }
       };

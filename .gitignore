@@ -6,4 +6,7 @@ dist
 .review-decisions.json
 .shop-items.json
 .shop-orders.json
+.admin-notes.json
+.admin-submitter-notes.json
+uploads/
 .DS_Store

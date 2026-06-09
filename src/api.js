@@ -73,6 +73,22 @@ export function adminUserProjects(accessToken, email) {
   return postJSON('/api/admin/user-projects', { accessToken, email });
 }
 
+// Internal admin notes on a single submission (admin-only)
+export function adminNotes(accessToken, recordId) {
+  return postJSON('/api/admin/notes', { accessToken, recordId });
+}
+export function adminAddNote(accessToken, recordId, text) {
+  return postJSON('/api/admin/notes/add', { accessToken, recordId, text });
+}
+
+// Internal admin notes about a submitter, shared across all their projects (admin-only)
+export function adminSubmitterNotes(accessToken, email) {
+  return postJSON('/api/admin/submitter-notes', { accessToken, email });
+}
+export function adminAddSubmitterNote(accessToken, email, text) {
+  return postJSON('/api/admin/submitter-notes/add', { accessToken, email, text });
+}
+
 export function getMySubmissions(email) {
   return postJSON('/api/my-submissions', { email });
 }
@@ -87,6 +103,11 @@ export function loadUserProjects(email) {
 
 export function saveUserProjects(email, projects, recordId) {
   return postJSON('/api/user/projects/save', { email, projects, recordId });
+}
+
+// Upload a base64 data-URL image (journal screenshot); returns { url }.
+export function uploadImage(dataUrl) {
+  return postJSON('/api/upload', { dataUrl });
 }
 
 export async function getPublishedGames() {

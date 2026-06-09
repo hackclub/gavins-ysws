@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 
 // School/corporate networks often intercept HTTPS with their own CA, which Node
 // rejects by default. Allow outbound API calls in local dev only.
@@ -60,7 +61,13 @@ const PLAYS_PATH       = path.join(__dirname, '.play-counts.json');
 const COMMENTS_PATH    = path.join(__dirname, '.comments.json');
 const SHOP_ITEMS_PATH  = path.join(__dirname, '.shop-items.json');
 const SHOP_ORDERS_PATH = path.join(__dirname, '.shop-orders.json');
+const ADMIN_NOTES_PATH = path.join(__dirname, '.admin-notes.json');
+const ADMIN_SUBMITTER_NOTES_PATH = path.join(__dirname, '.admin-submitter-notes.json');
+const UPLOADS_DIR      = path.join(__dirname, 'uploads');
 const COINS_PER_HOUR   = 20;
+
+// Ensure the uploads directory exists for journal screenshots.
+fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(() => {});
 
 const DEFAULT_SHOP_ITEMS = [
   { id: 'steam-giftcard', title: '$10 Steam Gift Card', desc: 'Redeem for games on Steam.', coins: 40, minPlayers: 10, image: '/shop-steam-giftcard.png', active: true },
@@ -82,6 +89,23 @@ async function loadComments() {
 }
 async function saveComments(data) {
   await fs.writeFile(COMMENTS_PATH, JSON.stringify(data, null, 2));
+}
+
+// Internal admin-only notes, keyed by submission record id. Never exposed to users.
+async function loadAdminNotes() {
+  try { return JSON.parse(await fs.readFile(ADMIN_NOTES_PATH, 'utf8')); } catch { return {}; }
+}
+async function saveAdminNotes(data) {
+  await fs.writeFile(ADMIN_NOTES_PATH, JSON.stringify(data, null, 2));
+}
+
+// Internal admin notes about a submitter, keyed by lowercased email — shared
+// across every project that person submits. Never exposed to users.
+async function loadSubmitterNotes() {
+  try { return JSON.parse(await fs.readFile(ADMIN_SUBMITTER_NOTES_PATH, 'utf8')); } catch { return {}; }
+}
+async function saveSubmitterNotes(data) {
+  await fs.writeFile(ADMIN_SUBMITTER_NOTES_PATH, JSON.stringify(data, null, 2));
 }
 
 const SHOP_ITEM_FIELDS = {
@@ -1142,6 +1166,71 @@ app.post('/api/admin/user-projects', async (req, res) => {
   }
 });
 
+// Internal admin notes for a submission — admin-only, never shown to the submitter.
+app.post('/api/admin/notes', async (req, res) => {
+  if (!await checkAdmin(req, res)) return;
+  try {
+    const { recordId } = req.body;
+    if (!recordId) return res.status(400).json({ error: 'recordId required' });
+    const all = await loadAdminNotes();
+    return res.json({ success: true, notes: all[recordId] || [] });
+  } catch (err) {
+    console.error('Admin notes error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.post('/api/admin/notes/add', async (req, res) => {
+  const adminEmail = await checkAdmin(req, res);
+  if (!adminEmail) return;
+  try {
+    const { recordId, text } = req.body;
+    if (!recordId || !text?.trim()) return res.status(400).json({ error: 'recordId and text required' });
+    const note = { author: adminEmail, text: text.trim(), date: new Date().toISOString() };
+    const all = await loadAdminNotes();
+    if (!all[recordId]) all[recordId] = [];
+    all[recordId].push(note);
+    await saveAdminNotes(all);
+    return res.json({ success: true, note, notes: all[recordId] });
+  } catch (err) {
+    console.error('Admin add-note error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Admin notes about a submitter — shared across all their submissions. Admin-only.
+app.post('/api/admin/submitter-notes', async (req, res) => {
+  if (!await checkAdmin(req, res)) return;
+  try {
+    const email = (req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'email required' });
+    const all = await loadSubmitterNotes();
+    return res.json({ success: true, notes: all[email] || [] });
+  } catch (err) {
+    console.error('Submitter notes error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.post('/api/admin/submitter-notes/add', async (req, res) => {
+  const adminEmail = await checkAdmin(req, res);
+  if (!adminEmail) return;
+  try {
+    const email = (req.body?.email || '').trim().toLowerCase();
+    const text = req.body?.text;
+    if (!email || !text?.trim()) return res.status(400).json({ error: 'email and text required' });
+    const note = { author: adminEmail, text: text.trim(), date: new Date().toISOString() };
+    const all = await loadSubmitterNotes();
+    if (!all[email]) all[email] = [];
+    all[email].push(note);
+    await saveSubmitterNotes(all);
+    return res.json({ success: true, note, notes: all[email] });
+  } catch (err) {
+    console.error('Submitter add-note error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // Public list of accepted / published games
 // Record one play for a game (no auth — called when user opens game in the arcade)
 app.post('/api/play', async (req, res) => {
@@ -1478,6 +1567,30 @@ app.post('/api/admin/shop/orders/update', async (req, res) => {
   } catch (err) {
     if (err.message === 'Order not found') return res.status(404).json({ error: err.message });
     return res.status(500).json({ error: err.message });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Image uploads (journal screenshots) — stored on disk, served by URL.
+   Served under /api/* so the dev Vite proxy forwards it to this server.
+   ───────────────────────────────────────────────────────────────────────── */
+app.use('/api/uploads', express.static(UPLOADS_DIR, { maxAge: '7d', immutable: true }));
+
+app.post('/api/upload', async (req, res) => {
+  try {
+    const { dataUrl } = req.body || {};
+    if (typeof dataUrl !== 'string') return res.status(400).json({ error: 'dataUrl is required' });
+    const m = dataUrl.match(/^data:image\/(png|jpe?g|gif|webp);base64,(.+)$/);
+    if (!m) return res.status(400).json({ error: 'Unsupported or invalid image data' });
+    const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > 6 * 1024 * 1024) return res.status(413).json({ error: 'Image too large (max 6MB)' });
+    const name = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
+    await fs.writeFile(path.join(UPLOADS_DIR, name), buf);
+    return res.json({ success: true, url: `/api/uploads/${name}` });
+  } catch (err) {
+    console.error('Upload error:', err);
+    return res.status(500).json({ error: 'Upload failed' });
   }
 });
 
