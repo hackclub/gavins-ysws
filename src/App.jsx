@@ -4998,6 +4998,7 @@ import {
 
       const handleAddEntry = useCallback((id, text) => {
         const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const entry = { text, date };
         setProjects(prev => prev.map(p =>
           p.id === id ? { ...p, journalEntries: [...p.journalEntries, entry] } : p
         ));
