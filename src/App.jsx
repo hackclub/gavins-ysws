@@ -60,7 +60,7 @@ import {
             <a key={url} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', lineHeight: 0 }}>
               <img src={url} alt={`screenshot ${i + 1}`} style={{
                 height: `${size}px`, width: 'auto', maxWidth: '100%',
-                borderRadius: '3px', border: `1px solid ${PURPLE}44`,
+                borderRadius: 0, border: `1px solid ${PURPLE}44`,
                 display: 'block', cursor: 'pointer',
               }} />
             </a>
@@ -223,7 +223,7 @@ import {
                 width: 'auto',
                 height: 'auto',
                 border: `1px solid ${PURPLE}`,
-                borderRadius: '2px',
+                borderRadius: 0,
                 verticalAlign: 'top',
               }}
             />
@@ -232,7 +232,7 @@ import {
               display: 'inline-block',
               border: `1px solid ${PURPLE}`,
               background: '#0a0615',
-              borderRadius: '2px',
+              borderRadius: 0,
               padding: '32px 24px',
               maxWidth: '100%',
             }}>
@@ -413,7 +413,7 @@ import {
                     padding: '12px 14px',
                     gap: '10px',
                     cursor: 'pointer',
-                    borderRadius: '4px',
+                    borderRadius: 0,
                     outline: active ? `2px solid ${accent}` : '2px solid transparent',
                     outlineOffset: '2px',
                     background: active
@@ -496,7 +496,7 @@ import {
               padding: '40px',
               maxWidth: '720px',
               width: '100%',
-              borderRadius: '4px',
+              borderRadius: 0,
             }}>
               <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '14px', color: AMBER, marginBottom: '28px', lineHeight: 1.6, textAlign: 'center' }}>
                 The Challenge
@@ -519,7 +519,7 @@ import {
               padding: '40px',
               maxWidth: '720px',
               width: '100%',
-              borderRadius: '4px',
+              borderRadius: 0,
               position: 'relative',
               overflow: 'hidden',
             }}>
@@ -549,7 +549,7 @@ import {
                 <div style={{
                   background: '#09061a',
                   height: '20px',
-                  borderRadius: '2px',
+                  borderRadius: 0,
                   overflow: 'hidden',
                   border: `1px solid rgba(245,197,66,0.25)`,
                 }}>
@@ -613,7 +613,7 @@ import {
                     background: active ? PURPLE : `${PURPLE}18`,
                     color: active ? BG : PURPLE,
                     border: `1px solid ${active ? PURPLE : `${PURPLE}44`}`,
-                    borderRadius: '3px', padding: '3px 9px',
+                    borderRadius: 0, padding: '3px 9px',
                     cursor: (!active && full) ? 'not-allowed' : 'pointer',
                     opacity: (!active && full) ? 0.4 : 1,
                     transition: 'background 0.12s, color 0.12s',
@@ -630,7 +630,7 @@ import {
                   display: 'inline-flex', alignItems: 'center', gap: '5px',
                   fontFamily: "'IBM Plex Mono'", fontSize: '11px',
                   background: `${PURPLE}22`, color: PURPLE,
-                  border: `1px solid ${PURPLE}55`, borderRadius: '3px',
+                  border: `1px solid ${PURPLE}55`, borderRadius: 0,
                   padding: '3px 8px',
                 }}>
                   {tag}
@@ -877,7 +877,7 @@ import {
                 display: 'flex', alignItems: 'center', gap: '12px',
                 background: 'rgba(0,0,0,0.25)',
                 border: `2px solid ${reviewStatusColor(project.submissionStatus)}`,
-                borderRadius: '6px', padding: '16px 20px', marginBottom: '24px',
+                borderRadius: 0, padding: '16px 20px', marginBottom: '24px',
               }}>
                 <span style={{
                   fontFamily: "'IBM Plex Mono'", fontSize: '12px', fontWeight: 700,
@@ -898,7 +898,7 @@ import {
               <div style={{
                 background: 'rgba(0,0,0,0.25)',
                 border: `2px solid ${AMBER}`,
-                borderRadius: '6px', padding: '16px 20px', marginBottom: '24px',
+                borderRadius: 0, padding: '16px 20px', marginBottom: '24px',
               }}>
                 <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: AMBER, marginBottom: '14px' }}>
                   ORGANIZER FEEDBACK
@@ -907,7 +907,7 @@ import {
                   {project.submissionFeedback.map((fb, i) => (
                     <div key={i} style={{
                       background: '#0f0820', border: `1px solid rgba(251,191,36,0.3)`,
-                      borderRadius: '2px', padding: '12px 14px',
+                      borderRadius: 0, padding: '12px 14px',
                     }}>
                       {fb.date && (
                         <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginBottom: '6px' }}>
@@ -930,7 +930,7 @@ import {
             )}
 
             {/* Hours block — Hackatime only */}
-            <div style={{ background: CARD, border: `1px solid ${PURPLE}`, padding: '28px', marginBottom: '44px', borderRadius: '4px' }}>
+            <div style={{ background: CARD, border: `1px solid ${PURPLE}`, padding: '28px', marginBottom: '44px', borderRadius: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
@@ -962,7 +962,7 @@ import {
                       <span key={tag} style={{
                         fontFamily: "'IBM Plex Mono'", fontSize: '11px',
                         background: `${PURPLE}18`, color: PURPLE,
-                        border: `1px solid ${PURPLE}44`, borderRadius: '3px',
+                        border: `1px solid ${PURPLE}44`, borderRadius: 0,
                         padding: '3px 9px',
                       }}>{tag}</span>
                     ))}
@@ -999,7 +999,7 @@ import {
                   background: '#0f0820',
                   border: `1px solid rgba(192,132,252,0.25)`,
                   padding: '16px 20px',
-                  borderRadius: '2px',
+                  borderRadius: 0,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: PURPLE }}>{entry.date}</div>
@@ -1088,14 +1088,14 @@ import {
           {/* Progress bar */}
           <div style={{ marginBottom: '52px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ flex: 1, background: CARD, height: '20px', borderRadius: '4px', overflow: 'hidden', border: `1px solid rgba(192,132,252,0.2)` }}>
+              <div style={{ flex: 1, background: CARD, height: '20px', borderRadius: 0, overflow: 'hidden', border: `1px solid rgba(192,132,252,0.2)` }}>
                 <div
                   className="progress-fill"
                   style={{
                     width: `${pct}%`,
                     height: '100%',
                     background: qualified ? `linear-gradient(90deg, ${AMBER}, ${AMBERD})` : GREEN,
-                    borderRadius: '4px',
+                    borderRadius: 0,
                     transition: 'width 0.5s ease',
                   }}
                 />
@@ -1128,7 +1128,7 @@ import {
                 <div key={p.id} className="project-card" style={{
                   background: CARD,
                   border: `1px solid ${PURPLE}`,
-                  borderRadius: '8px',
+                  borderRadius: 0,
                   overflow: 'hidden',
                 }}>
                   {p.headerImage
@@ -1177,7 +1177,7 @@ import {
                           <span key={tag} style={{
                             fontFamily: "'IBM Plex Mono'", fontSize: '10px',
                             background: `${PURPLE}18`, color: PURPLE,
-                            border: `1px solid ${PURPLE}44`, borderRadius: '3px',
+                            border: `1px solid ${PURPLE}44`, borderRadius: 0,
                             padding: '2px 7px',
                           }}>{tag}</span>
                         ))}
@@ -1202,7 +1202,7 @@ import {
                 <span style={{
                   fontFamily: "'IBM Plex Mono'", fontSize: '11px',
                   background: `${AMBER}22`, color: AMBER,
-                  border: `1px solid ${AMBER}55`, borderRadius: '2px',
+                  border: `1px solid ${AMBER}55`, borderRadius: 0,
                   padding: '2px 8px',
                 }}>{reviewProjects.length}</span>
               </div>
@@ -1215,7 +1215,7 @@ import {
                   <div key={p.id} className="project-card" style={{
                     background: CARD,
                     border: `1px solid ${AMBER}66`,
-                    borderRadius: '8px',
+                    borderRadius: 0,
                     overflow: 'hidden',
                     opacity: 0.85,
                   }}>
@@ -1262,7 +1262,7 @@ import {
                             <span key={tag} style={{
                               fontFamily: "'IBM Plex Mono'", fontSize: '10px',
                               background: `${PURPLE}18`, color: PURPLE,
-                              border: `1px solid ${PURPLE}44`, borderRadius: '3px',
+                              border: `1px solid ${PURPLE}44`, borderRadius: 0,
                               padding: '2px 7px',
                             }}>{tag}</span>
                           ))}
@@ -1288,7 +1288,7 @@ import {
                 <span style={{
                   fontFamily: "'IBM Plex Mono'", fontSize: '11px',
                   background: `${AMBER}22`, color: AMBER,
-                  border: `1px solid ${AMBER}55`, borderRadius: '2px',
+                  border: `1px solid ${AMBER}55`, borderRadius: 0,
                   padding: '2px 8px',
                 }}>{doneProjects.length}</span>
               </div>
@@ -1301,7 +1301,7 @@ import {
                   <div key={p.id} className="project-card" style={{
                     background: CARD,
                     border: `2px solid ${AMBER}`,
-                    borderRadius: '8px',
+                    borderRadius: 0,
                     overflow: 'hidden',
                   }}>
                     {p.itchUrl ? (
@@ -1340,7 +1340,7 @@ import {
                             <span key={tag} style={{
                               fontFamily: "'IBM Plex Mono'", fontSize: '10px',
                               background: `${PURPLE}18`, color: PURPLE,
-                              border: `1px solid ${PURPLE}44`, borderRadius: '3px',
+                              border: `1px solid ${PURPLE}44`, borderRadius: 0,
                               padding: '2px 7px',
                             }}>{tag}</span>
                           ))}
@@ -1361,7 +1361,7 @@ import {
                               fontFamily: "'IBM Plex Mono'", fontSize: '11px',
                               background: 'transparent', color: PURPLE,
                               border: `1px solid ${PURPLE}55`, borderBottom: `3px solid ${PURPLE}55`,
-                              padding: '6px 12px', cursor: 'pointer', borderRadius: '3px',
+                              padding: '6px 12px', cursor: 'pointer', borderRadius: 0,
                               width: '100%', textAlign: 'left',
                             }}
                           >
@@ -1389,7 +1389,7 @@ import {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: '4px',
+            borderRadius: 0,
             maxWidth: '480px',
             margin: '0 auto',
           }}>
@@ -1407,7 +1407,7 @@ import {
     function DropBox({ title, children }) {
       const [open, setOpen] = useState(false);
       return (
-        <div style={{ border: `1px solid ${AMBER}`, borderRadius: '2px', margin: '16px 0', overflow: 'hidden' }}>
+        <div style={{ border: `1px solid ${AMBER}`, borderRadius: 0, margin: '16px 0', overflow: 'hidden' }}>
           <button
             onClick={() => setOpen(o => !o)}
             style={{
@@ -1455,7 +1455,7 @@ import {
                 <div style={{
                   flex: 1, background: CARD,
                   border: `1px solid rgba(192,132,252,0.3)`,
-                  padding: '28px', borderRadius: '4px',
+                  padding: '28px', borderRadius: 0,
                 }}>
                   <h3 style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color: AMBER, marginBottom: '16px', lineHeight: 1.7 }}>
                     {step.heading}
@@ -1482,7 +1482,7 @@ import {
             background: active ? AMBER : CARD,
             border: `2px solid ${active ? AMBERD : locked ? MUTED : PURPLE}`,
             padding: '14px 16px', cursor: 'pointer', textAlign: 'center',
-            minWidth: '120px', borderRadius: '4px', transition: 'all 0.15s',
+            minWidth: '120px', borderRadius: 0, transition: 'all 0.15s',
             opacity: locked ? 0.6 : 1,
           }}>
             <div style={{ fontFamily: "'Press Start 2P'", fontSize: '8px', color: active ? BG : locked ? MUTED : CREAM, lineHeight: 1.8 }}>
@@ -1617,7 +1617,7 @@ import {
                   marginTop: '60px',
                   background: CARD,
                   border: `2px solid ${GREEN}`,
-                  borderRadius: '4px',
+                  borderRadius: 0,
                   padding: '36px 40px',
                   textAlign: 'center',
                 }}>
@@ -1648,7 +1648,7 @@ import {
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '380px' }}>
                 <div style={{
                   background: CARD, border: `2px solid ${PURPLE}`,
-                  padding: '52px', textAlign: 'center', maxWidth: '480px', borderRadius: '4px',
+                  padding: '52px', textAlign: 'center', maxWidth: '480px', borderRadius: 0,
                 }}>
                   <Sprite src="cabinet.png" size={72} style={{ marginBottom: '24px', opacity: 0.75 }} />
                   <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '12px', color: AMBER, marginBottom: '20px', lineHeight: 1.6 }}>
@@ -1712,7 +1712,7 @@ import {
           {(comments || []).map((c, i) => (
             <div key={i} style={{
               background: '#0f0820', border: `1px solid rgba(192,132,252,0.2)`,
-              padding: '10px 14px', borderRadius: '3px',
+              padding: '10px 14px', borderRadius: 0,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: PURPLE, fontWeight: 700 }}>{c.author}</span>
@@ -1780,7 +1780,7 @@ import {
                   <button onClick={() => setPlaying(false)} style={{
                     fontFamily: "'Press Start 2P'", fontSize: '10px',
                     background: CORAL, color: BG, border: 'none',
-                    padding: '8px 14px', cursor: 'pointer', borderRadius: '2px',
+                    padding: '8px 14px', cursor: 'pointer', borderRadius: 0,
                     borderBottom: `3px solid ${CORALD}`,
                   }}>✕ Close</button>
                 </div>
@@ -1820,7 +1820,7 @@ import {
                     <span key={tag} style={{
                       fontFamily: "'IBM Plex Mono'", fontSize: '11px',
                       background: `${PURPLE}18`, color: PURPLE,
-                      border: `1px solid ${PURPLE}44`, borderRadius: '3px',
+                      border: `1px solid ${PURPLE}44`, borderRadius: 0,
                       padding: '3px 9px',
                     }}>{tag}</span>
                   ))}
@@ -1836,9 +1836,9 @@ import {
                 {game.itchUrl ? (
                   <iframe src={game.itchUrl} width="100%" height="167" frameBorder="0"
                     sandbox="allow-scripts allow-same-origin"
-                    style={{ display: 'block', borderRadius: '4px', pointerEvents: 'none' }} />
+                    style={{ display: 'block', borderRadius: 0, pointerEvents: 'none' }} />
                 ) : (
-                  <div style={{ height: '167px', background: '#09061a', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }}>
+                  <div style={{ height: '167px', background: '#09061a', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 0 }}>
                     <span style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: MUTED }}>No embed</span>
                   </div>
                 )}
@@ -1878,7 +1878,7 @@ import {
                       {logs.map((entry, i) => (
                         <div key={i} style={{
                           background: CARD, border: `1px solid rgba(192,132,252,0.2)`,
-                          padding: '12px 16px', borderRadius: '3px',
+                          padding: '12px 16px', borderRadius: 0,
                         }}>
                           <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: PURPLE, marginBottom: '6px' }}>{entry.date}</div>
                           <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.7 }}>{entry.text}</div>
@@ -1925,7 +1925,7 @@ import {
                 background: active ? accent : `${accent}18`,
                 color: active ? BG : accent,
                 border: `1px solid ${active ? accent : `${accent}44`}`,
-                borderRadius: '3px', padding: '4px 11px', cursor: 'pointer',
+                borderRadius: 0, padding: '4px 11px', cursor: 'pointer',
                 transition: 'background 0.12s, color 0.12s',
               }}>{tag}</button>
             );
@@ -1934,7 +1934,7 @@ import {
             <button onClick={onClear} style={{
               fontFamily: "'IBM Plex Mono'", fontSize: '11px',
               background: 'none', color: CORAL,
-              border: `1px solid ${CORAL}44`, borderRadius: '3px',
+              border: `1px solid ${CORAL}44`, borderRadius: 0,
               padding: '4px 11px', cursor: 'pointer',
             }}>✕ Clear</button>
           )}
@@ -2045,7 +2045,7 @@ import {
               {visibleGames.map(game => (
                 <div key={game.id} style={{
                   background: CARD, border: `1px solid ${AMBER}33`,
-                  borderRadius: '8px', overflow: 'hidden',
+                  borderRadius: 0, overflow: 'hidden',
                   display: 'flex', flexDirection: 'column',
                   cursor: 'pointer', transition: 'border-color 0.15s',
                 }}
@@ -2080,7 +2080,7 @@ import {
                               background: active ? PURPLE : `${PURPLE}18`,
                               color: active ? BG : PURPLE,
                               border: `1px solid ${active ? PURPLE : `${PURPLE}44`}`,
-                              borderRadius: '3px', padding: '2px 7px', cursor: 'pointer',
+                              borderRadius: 0, padding: '2px 7px', cursor: 'pointer',
                             }}>{tag}</button>
                           );
                         })}
@@ -2120,6 +2120,7 @@ import {
       const [addressItem,  setAddressItem]  = useState(null);
       const [addressInput, setAddressInput] = useState('');
       const [phoneInput,   setPhoneInput]   = useState('');
+      const [viewItem,     setViewItem]     = useState(null);
       const [addressErr,   setAddressErr]   = useState(null);
       const totalCoins = Math.floor((totalHours || 0) * COINS_PER_HOUR);
 
@@ -2220,9 +2221,9 @@ import {
                   </span>
                 )}
               </div>
-              <div style={{ height: '6px', background: `${AMBER}22`, borderRadius: '3px', overflow: 'hidden' }}>
+              <div style={{ height: '6px', background: `${AMBER}22`, borderRadius: 0, overflow: 'hidden' }}>
                 <div className="progress-fill" style={{
-                  height: '100%', borderRadius: '3px',
+                  height: '100%', borderRadius: 0,
                   background: !nextTier
                     ? '#ffd700'
                     : (displayTiers.find(t => t.num === activeTier + 1) || displayTiers[0]).color,
@@ -2247,7 +2248,7 @@ import {
                   flex: '1 0 190px', minWidth: '170px',
                   borderRight: `1px solid ${AMBER}11`,
                   display: 'flex', flexDirection: 'column',
-                  opacity: unlocked ? 1 : 0.45,
+                  opacity: unlocked ? 1 : 0.75,
                   background: isCurrent ? `${color}08` : 'transparent',
                   transition: 'opacity 0.3s',
                 }}>
@@ -2262,7 +2263,7 @@ import {
                         <span style={{
                           fontFamily: "'IBM Plex Mono'", fontSize: '9px',
                           color: BG, background: color,
-                          padding: '2px 6px', borderRadius: '2px', fontWeight: 700,
+                          padding: '2px 6px', borderRadius: 0, fontWeight: 700,
                         }}>YOU</span>
                       )}
                       {!unlocked && <span style={{ fontSize: '14px' }}>🔒</span>}
@@ -2286,7 +2287,7 @@ import {
                         <div key={item.id} style={{
                           background: CARD,
                           border: `1px solid ${unlocked ? color + '55' : MUTED + '22'}`,
-                          borderRadius: '4px',
+                          borderRadius: 0,
                           display: 'flex', flexDirection: 'column',
                           boxShadow: available ? `0 0 12px ${color}18` : 'none',
                           overflow: 'hidden',
@@ -2309,11 +2310,6 @@ import {
                             <div style={{ fontFamily: "'Press Start 2P'", fontSize: '7px', color: unlocked ? color : MUTED, lineHeight: 1.7 }}>
                               {item.title}
                             </div>
-                            {item.desc && (
-                              <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, lineHeight: 1.6 }}>
-                                {item.desc}
-                              </div>
-                            )}
                             {item.coins > 0 && (
                               <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', fontWeight: 700,
                                 color: canAfford ? AMBER : MUTED, lineHeight: 1.6, marginTop: '2px' }}>
@@ -2326,15 +2322,28 @@ import {
                               </div>
                             )}
                           </div>
-                          {available && (
-                            <ArcadeBtn
-                              bg={GREEN} dark={GREEND}
-                              style={{ fontSize: '9px', borderRadius: 0, opacity: orderingId === item.id ? 0.6 : 1 }}
-                              onClick={() => handleOrder(item)}
+                          <div style={{ display: 'flex', borderTop: `1px solid ${unlocked ? color + '22' : MUTED + '11'}` }}>
+                            <button
+                              onClick={() => setViewItem(item)}
+                              style={{
+                                flex: 1, background: 'none', border: 'none',
+                                borderRight: available ? `1px solid ${color}22` : 'none',
+                                color: MUTED, fontFamily: "'IBM Plex Mono'", fontSize: '10px',
+                                padding: '8px', cursor: 'pointer',
+                              }}
                             >
-                              {orderingId === item.id ? '…' : 'Order'}
-                            </ArcadeBtn>
-                          )}
+                              View
+                            </button>
+                            {available && (
+                              <ArcadeBtn
+                                bg={GREEN} dark={GREEND}
+                                style={{ flex: 1, fontSize: '9px', borderRadius: 0, opacity: orderingId === item.id ? 0.6 : 1 }}
+                                onClick={() => handleOrder(item)}
+                              >
+                                {orderingId === item.id ? '…' : 'Order'}
+                              </ArcadeBtn>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -2353,7 +2362,7 @@ import {
             }}>
               <div style={{
                 background: CARD, border: `1px solid ${AMBER}55`,
-                padding: '32px', maxWidth: '420px', width: '90%', borderRadius: '4px',
+                padding: '32px', maxWidth: '420px', width: '90%', borderRadius: 0,
               }}>
                 <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '10px', color: AMBER, marginBottom: '6px', lineHeight: 1.7 }}>
                   {addressItem.title}
@@ -2409,6 +2418,45 @@ import {
                     onClick={() => setAddressItem(null)}
                   >
                     Cancel
+                  </ArcadeBtn>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── View item modal ── */}
+          {viewItem && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 100,
+            }} onClick={() => setViewItem(null)}>
+              <div style={{
+                background: CARD, border: `1px solid ${AMBER}55`,
+                padding: '0', maxWidth: '420px', width: '90%', overflow: 'hidden',
+              }} onClick={e => e.stopPropagation()}>
+                {viewItem.image && (
+                  <img src={viewItem.image} alt="" style={{ width: '100%', display: 'block', objectFit: 'contain' }} />
+                )}
+                {!viewItem.image && viewItem.icon && (
+                  <div style={{ padding: '32px', fontSize: '64px', textAlign: 'center' }}>{viewItem.icon}</div>
+                )}
+                <div style={{ padding: '24px' }}>
+                  <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color: AMBER, marginBottom: '12px', lineHeight: 1.7 }}>
+                    {viewItem.title}
+                  </h2>
+                  {viewItem.desc && (
+                    <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.8, marginBottom: '16px' }}>
+                      {viewItem.desc}
+                    </p>
+                  )}
+                  {viewItem.coins > 0 && (
+                    <p style={{ fontFamily: "'Press Start 2P'", fontSize: '10px', color: AMBER, marginBottom: '20px' }}>
+                      ¢{viewItem.coins} coins
+                    </p>
+                  )}
+                  <ArcadeBtn bg={MUTED} dark={MUTED} style={{ fontSize: '10px', width: '100%' }} onClick={() => setViewItem(null)}>
+                    Close
                   </ArcadeBtn>
                 </div>
               </div>
@@ -2486,7 +2534,7 @@ import {
                 style={{
                   background: CARD,
                   border: `1px solid ${open === i ? AMBER + '66' : AMBER + '22'}`,
-                  borderRadius: '4px',
+                  borderRadius: 0,
                   overflow: 'hidden',
                   transition: 'border-color 0.2s',
                 }}
@@ -2579,7 +2627,7 @@ import {
                 background: CARD,
                 border: `2px solid ${color}44`,
                 borderLeft: `4px solid ${color}`,
-                borderRadius: '4px',
+                borderRadius: 0,
                 padding: '28px 32px',
                 position: 'relative',
               }}>
@@ -2612,7 +2660,7 @@ import {
                       fontFamily: "'IBM Plex Mono'", fontSize: '11px',
                       color, background: `${color}18`,
                       border: `1px solid ${color}44`,
-                      borderRadius: '2px', padding: '4px 10px',
+                      borderRadius: 0, padding: '4px 10px',
                     }}>
                       ✓ {chip}
                     </span>
@@ -2630,7 +2678,7 @@ import {
               display: 'block', width: '100%',
               marginTop: '48px', padding: '28px 32px',
               background: `${AMBER}0f`, border: `1px solid ${AMBER}44`,
-              borderRadius: '4px', textAlign: 'center', cursor: 'pointer',
+              borderRadius: 0, textAlign: 'center', cursor: 'pointer',
               transition: 'background 0.15s, border-color 0.15s',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = `${AMBER}1f`; e.currentTarget.style.borderColor = AMBER; }}
@@ -2650,11 +2698,11 @@ import {
     /* ─── Layered background scene ───────────────────────────────────────── */
 
     // Three altitude tiers:  0=below (underground)  1=above (ground)  2=space (admin)
-    const ABOVE_GROUND = new Set(['home','shop','faq','tutorial','guidelines','arcade']);
+    const ABOVE_GROUND = new Set(['home','shop','faq','tutorial','guidelines']);
     const ALT_LEVEL    = { below: 0, above: 1, space: 2 };
     const altOf        = p => p === 'admin' ? 'space' : ABOVE_GROUND.has(p) ? 'above' : 'below';
-    // Home, FAQ, and Admin each have their own unique terrain; all others share their altitude's terrain
-    const terrainOf = p => p === 'home' ? 'home' : p === 'faq' ? 'faq' : p === 'admin' ? 'admin' : altOf(p);
+    // Home, FAQ, Admin, and Arcade each have their own unique terrain; all others share their altitude's terrain
+    const terrainOf = p => p === 'home' ? 'home' : p === 'faq' ? 'faq' : p === 'admin' ? 'admin' : p === 'arcade' ? 'arcade' : altOf(p);
 
     // Sky layers (fixed, never slide — one per altitude, fade between them)
     const SKY_ABOVE = { file: 'bg2-layer-0.png', op: 0.50 };
@@ -2675,6 +2723,12 @@ import {
     // Admin page — space pixel art (4 frames: asteroids drifting, moon cycling)
     const ADMIN_FRAMES = [
       'admin-bg-0.png','admin-bg-1.png','admin-bg-2.png','admin-bg-3.png',
+    ];
+
+    // Arcade page — cracked underground floor (7 frames)
+    const ARCADE_FRAMES = [
+      'arcade-bg-0.png','arcade-bg-1.png','arcade-bg-2.png','arcade-bg-3.png',
+      'arcade-bg-4.png','arcade-bg-5.png','arcade-bg-6.png',
     ];
 
     // Terrain layers per page/altitude
@@ -2708,6 +2762,10 @@ import {
       // ── Admin page — space pixel art with drifting asteroids ─────────────
       admin: [
         { frames: ADMIN_FRAMES, speed: 600, op: 1.0, contain: true },
+      ],
+      // ── Arcade page — cracked underground floor ───────────────────────────
+      arcade: [
+        { frames: ARCADE_FRAMES, speed: 200, op: 1.0, cover: true },
       ],
     };
 
@@ -3193,7 +3251,7 @@ import {
 
             {/* Show selected project details */}
             {selectedProject && (
-              <div style={{ background: CARD, border: `1px solid ${PURPLE}`, borderRadius: '4px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ background: CARD, border: `1px solid ${PURPLE}`, borderRadius: 0, padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ fontFamily: "'Press Start 2P'", fontSize: '10px', color: AMBER }}>{selectedProject.name}</div>
                 {selectedProject.description && (
                   <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.7 }}>{selectedProject.description}</div>
@@ -3224,7 +3282,7 @@ import {
                       style={{
                         background: CARD,
                         border: isSelected ? `2px solid ${tier.color}` : `1px solid ${tier.color}44`,
-                        borderRadius: '6px',
+                        borderRadius: 0,
                         padding: '14px 10px',
                         cursor: hasHours ? 'pointer' : 'not-allowed',
                         opacity: hasHours ? 1 : 0.4,
@@ -3273,7 +3331,7 @@ import {
                       <span key={tag} style={{
                         fontFamily: "'IBM Plex Mono'", fontSize: '11px',
                         background: `${PURPLE}18`, color: PURPLE,
-                        border: `1px solid ${PURPLE}44`, borderRadius: '3px',
+                        border: `1px solid ${PURPLE}44`, borderRadius: 0,
                         padding: '3px 9px',
                       }}>{tag}</span>
                     ))}
@@ -3312,7 +3370,7 @@ import {
                     frameBorder="0"
                     allowFullScreen
                     sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
-                    style={{ borderRadius: '4px', marginTop: '8px', maxWidth: '100%', display: 'block' }}
+                    style={{ borderRadius: 0, marginTop: '8px', maxWidth: '100%', display: 'block' }}
                   />
                 );
               })()}
@@ -3349,7 +3407,7 @@ import {
 
       return (
         <div style={{
-          background: CARD, border: `1px solid ${PURPLE}`, borderRadius: '6px',
+          background: CARD, border: `1px solid ${PURPLE}`, borderRadius: 0,
           padding: '18px 22px', display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap',
         }}>
@@ -3371,7 +3429,7 @@ import {
                       background: active ? PURPLE : `${PURPLE}18`,
                       color: active ? BG : PURPLE,
                       border: `1px solid ${active ? PURPLE : `${PURPLE}44`}`,
-                      borderRadius: '3px', padding: '2px 7px', cursor: 'pointer',
+                      borderRadius: 0, padding: '2px 7px', cursor: 'pointer',
                     }}>{tag}</button>
                   );
                 })}
@@ -3401,7 +3459,7 @@ import {
           {notes.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px', maxHeight: '200px', overflowY: 'auto' }}>
               {notes.map((n, i) => (
-                <div key={i} style={{ background: '#0f0820', border: `1px solid ${MUTED}`, borderRadius: '2px', padding: '8px 10px' }}>
+                <div key={i} style={{ background: '#0f0820', border: `1px solid ${MUTED}`, borderRadius: 0, padding: '8px 10px' }}>
                   <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.text}</div>
                   <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '9px', color: MUTED, marginTop: '5px' }}>
                     {typeof n.author === 'object' ? (n.author?.email || 'Admin') : (n.author || 'Admin')}
@@ -3420,7 +3478,7 @@ import {
               width: '100%', resize: 'vertical', boxSizing: 'border-box',
               background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
               fontFamily: "'IBM Plex Mono'", fontSize: '12px', padding: '10px',
-              borderRadius: '2px', marginBottom: '10px',
+              borderRadius: 0, marginBottom: '10px',
             }}
           />
           <ArcadeBtn
@@ -3577,7 +3635,7 @@ import {
 
       const panelStyle = {
         background: CARD, border: `2px solid ${MUTED}`,
-        borderRadius: '4px', padding: '16px', minHeight: '120px',
+        borderRadius: 0, padding: '16px', minHeight: '120px',
       };
 
       return (
@@ -3654,7 +3712,7 @@ import {
                 {!logsLoading && !logsError && journalEntries.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '360px', overflowY: 'auto' }}>
                     {journalEntries.map((entry, i) => (
-                      <div key={i} style={{ background: '#0f0820', border: `1px solid rgba(192,132,252,0.2)`, padding: '12px 14px', borderRadius: '2px' }}>
+                      <div key={i} style={{ background: '#0f0820', border: `1px solid rgba(192,132,252,0.2)`, padding: '12px 14px', borderRadius: 0 }}>
                         <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: PURPLE, marginBottom: '4px' }}>{entry.date}</div>
                         <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.6 }}>{entry.text}</div>
                       </div>
@@ -3666,7 +3724,7 @@ import {
 
             {/* ── Right sidebar: actions + feedback ── */}
             <div style={{
-              background: CARD, border: `2px solid ${MUTED}`, borderRadius: '4px',
+              background: CARD, border: `2px solid ${MUTED}`, borderRadius: 0,
               display: 'flex', flexDirection: 'column', minHeight: '520px',
             }}>
               <div style={{
@@ -3718,7 +3776,7 @@ import {
                     width: '100%', resize: 'vertical', boxSizing: 'border-box',
                     background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
                     fontFamily: "'IBM Plex Mono'", fontSize: '12px', padding: '10px',
-                    borderRadius: '2px', marginBottom: '10px',
+                    borderRadius: 0, marginBottom: '10px',
                   }}
                 />
                 <ArcadeBtn
@@ -3996,7 +4054,7 @@ import {
 
           {/* Account card */}
           <div style={{
-            background: CARD, border: `2px solid ${PURPLE}`, borderRadius: '6px',
+            background: CARD, border: `2px solid ${PURPLE}`, borderRadius: 0,
             padding: '28px 32px', marginBottom: '28px', maxWidth: '560px',
           }}>
             <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: MUTED, marginBottom: '20px' }}>HACKATIME ACCOUNT</div>
@@ -4052,7 +4110,7 @@ import {
               return (
                 <div key={rec.id} style={{
                   background: CARD, border: `1px solid ${PURPLE}44`,
-                  borderRadius: '4px', padding: '12px 16px',
+                  borderRadius: 0, padding: '12px 16px',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   gap: '12px', flexWrap: 'wrap',
                 }}>
@@ -4190,7 +4248,7 @@ import {
             <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '20px' }}>{selectedEmail}</div>
 
             {/* User-level total players override */}
-            <div style={{ background: `${AMBER}11`, border: `1px solid ${AMBER}44`, borderRadius: '6px', padding: '16px', marginBottom: '28px', display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ background: `${AMBER}11`, border: `1px solid ${AMBER}44`, borderRadius: 0, padding: '16px', marginBottom: '28px', display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
               <div>
                 <div style={{ fontFamily: "'Press Start 2P'", fontSize: '8px', color: AMBER, marginBottom: '6px' }}>TOTAL PLAYERS OVERRIDE</div>
                 <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '10px' }}>Sets this user's shop player count directly — overrides all per-game play tracking.</div>
@@ -4222,7 +4280,7 @@ import {
                 const busy  = saving[rec.id];
                 const msg   = saveMsg[rec.id];
                 return (
-                  <div key={rec.id} style={{ background: CARD, border: `1px solid ${PURPLE}`, borderRadius: '4px', padding: '16px' }}>
+                  <div key={rec.id} style={{ background: CARD, border: `1px solid ${PURPLE}`, borderRadius: 0, padding: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
                       <div>
                         <div style={{ fontFamily: "'Press Start 2P'", fontSize: '10px', color: AMBER, marginBottom: '4px', lineHeight: 1.6 }}>{sName}</div>
@@ -4265,7 +4323,7 @@ import {
             {!loading && userProjects && userProjects.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {userProjects.map((p, i) => (
-                  <div key={p.id || i} style={{ background: CARD, border: `1px solid ${PURPLE}44`, borderRadius: '4px', padding: '14px 18px' }}>
+                  <div key={p.id || i} style={{ background: CARD, border: `1px solid ${PURPLE}44`, borderRadius: 0, padding: '14px 18px' }}>
                     <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: PURPLE, marginBottom: '6px', lineHeight: 1.6 }}>{p.name || '(unnamed)'}</div>
                     <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED, lineHeight: 1.8 }}>
                       {p.hours != null ? `${p.hours}h` : 'no hours'} · {p.journalEntries?.length ?? 0} log entries
@@ -4309,7 +4367,7 @@ import {
               ].filter(Boolean).join(' ');
               return (
                 <div key={email} style={{
-                  background: CARD, border: `1px solid ${PURPLE}`, borderRadius: '4px',
+                  background: CARD, border: `1px solid ${PURPLE}`, borderRadius: 0,
                   padding: '14px 18px', display: 'flex', justifyContent: 'space-between',
                   alignItems: 'center', gap: '12px', flexWrap: 'wrap',
                 }}>
@@ -4389,7 +4447,7 @@ import {
               ].filter(Boolean).join(' ');
               return (
                 <div key={email} style={{
-                  background: CARD, border: `1px solid ${PURPLE}`, borderRadius: '4px',
+                  background: CARD, border: `1px solid ${PURPLE}`, borderRadius: 0,
                   padding: '14px 18px', display: 'flex', justifyContent: 'space-between',
                   alignItems: 'center', gap: '12px', flexWrap: 'wrap',
                 }}>
@@ -4502,7 +4560,7 @@ import {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '28px' }}>
                 {t2.length === 0 && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED, fontStyle: 'italic' }}>None</p>}
                 {t2.map(email => (
-                  <div key={email} style={{ background: CARD, border: `1px solid #ffd70044`, borderRadius: '4px', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                  <div key={email} style={{ background: CARD, border: `1px solid #ffd70044`, borderRadius: 0, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                     <div>
                       <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM }}>{email}</span>
                       {isEnvAdmin(email) && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginLeft: '10px' }}>(env)</span>}
@@ -4518,7 +4576,7 @@ import {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {t1.length === 0 && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED, fontStyle: 'italic' }}>None</p>}
                 {t1.map(email => (
-                  <div key={email} style={{ background: CARD, border: `1px solid ${AMBER}44`, borderRadius: '4px', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                  <div key={email} style={{ background: CARD, border: `1px solid ${AMBER}44`, borderRadius: 0, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                     <div>
                       <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM }}>{email}</span>
                       {isEnvAdmin(email) && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginLeft: '10px' }}>(env)</span>}
