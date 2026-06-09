@@ -6,4 +6,8 @@ dist
 .review-decisions.json
 .shop-items.json
 .shop-orders.json
+.admin-list.json
+.play-counts.json
+.user-plays.json
+.comments.json
 .DS_Store

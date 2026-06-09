@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   startHackatimeLogin, exchangeHackatimeCode,
   getHackatimeMe, getHackatimeProjects, getHackatimeProjectHours,
-  submitProject, adminCheck, adminList, adminReview, adminUserProjects,
+  submitProject, adminCheck, adminList, adminReview, adminUserProjects, adminAdjust,
+  adminListAdmins, adminAddAdmin, adminRemoveAdmin,
+  adminSetUserPlays, getUserTotalPlays,
   loadUserProjects, saveUserProjects, getMySubmissions, getPublishedGames,
   recordPlay, getPlayCounts, getComments, postComment, getGameLogs,
   getShopItems, placeShopOrder,
@@ -83,9 +85,10 @@ import {
         );
         if (!match?.reviewStatus) return p;
         const submissionStatus = normalizeReviewStatus(match.reviewStatus);
-        return submissionStatus
-          ? { ...p, submissionStatus, airtableRecordId: match.recordId || p.airtableRecordId }
-          : p;
+        if (!submissionStatus) return p;
+        const extra = { submissionStatus, submissionFeedback: match.feedback || [], airtableRecordId: match.recordId || p.airtableRecordId };
+        if (match.hoursOverride != null) extra.hours = match.hoursOverride;
+        return { ...p, ...extra };
       });
     }
     function px(n) { return typeof n === 'number' ? `${n}px` : n; }
@@ -809,8 +812,37 @@ import {
                 <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.6 }}>
                   {project.submissionStatus === 'under-review' && 'Submitted to the jam — an organizer is reviewing your project.'}
                   {project.submissionStatus === 'accepted' && 'Your project was accepted into the jam!'}
-                  {project.submissionStatus === 'rejected' && 'This submission was rejected. You can update your project and submit again.'}
+                  {project.submissionStatus === 'rejected' && 'This submission needs edits. Review the feedback below, update your project, and submit again.'}
                 </span>
+              </div>
+            )}
+
+            {Array.isArray(project.submissionFeedback) && project.submissionFeedback.length > 0 && (
+              <div style={{
+                background: 'rgba(0,0,0,0.25)',
+                border: `2px solid ${AMBER}`,
+                borderRadius: '6px', padding: '16px 20px', marginBottom: '24px',
+              }}>
+                <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: AMBER, marginBottom: '14px' }}>
+                  ORGANIZER FEEDBACK
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {project.submissionFeedback.map((fb, i) => (
+                    <div key={i} style={{
+                      background: '#0f0820', border: `1px solid rgba(251,191,36,0.3)`,
+                      borderRadius: '2px', padding: '12px 14px',
+                    }}>
+                      {fb.date && (
+                        <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginBottom: '6px' }}>
+                          {new Date(fb.date).toLocaleString()}
+                        </div>
+                      )}
+                      <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                        {fb.text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -1190,6 +1222,7 @@ import {
                         height="167"
                         frameBorder="0"
                         allowFullScreen
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
                         style={{ display: 'block' }}
                       />
                     ) : (
@@ -1570,7 +1603,7 @@ import {
         if (!text.trim() || posting) return;
         setPosting(true);
         try {
-          const d = await postComment(gameId, user?.username || user?.email || 'Arcade Player', text.trim());
+          const d = await postComment(gameId, user?.username || user?.email || 'Arcade Player', text.trim(), user?.token);
           setComments(prev => [...(prev || []), d.comment]);
           setText('');
         } catch (e) { setErrorC(e.message); }
@@ -1667,6 +1700,7 @@ import {
                 src={toPlayableUrl(game.itchUrl)}
                 style={{ flex: 1, border: 'none', display: 'block', width: '100%' }}
                 allowFullScreen allow="autoplay; fullscreen *; pointer-lock *"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-pointer-lock"
               />
             </div>
           )}
@@ -1712,6 +1746,7 @@ import {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {game.itchUrl ? (
                   <iframe src={game.itchUrl} width="100%" height="167" frameBorder="0"
+                    sandbox="allow-scripts allow-same-origin"
                     style={{ display: 'block', borderRadius: '4px', pointerEvents: 'none' }} />
                 ) : (
                   <div style={{ height: '167px', background: '#09061a', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }}>
@@ -1721,7 +1756,7 @@ import {
                 {game.itchUrl && (
                   <ArcadeBtn bg={AMBER} style={{ fontSize: '14px', padding: '14px' }} onClick={() => {
                     setPlaying(true);
-                    recordPlay(game.id).catch(() => {});
+                    recordPlay(game.id, user?.token).catch(() => {});
                   }}>
                     ▶ Play Now
                   </ArcadeBtn>
@@ -1827,6 +1862,7 @@ import {
     function GamesPage({ user }) {
       const [games,    setGames]    = useState(null);
       const [selectedTags, setSelectedTags] = useState([]);
+      const [sortBy,   setSortBy]   = useState('plays-desc'); // 'plays-desc' | 'plays-asc'
       const [loading,  setLoading]  = useState(true);
       const [error,    setError]    = useState(null);
       const [viewing,  setViewing]  = useState(null); // game open in detail page
@@ -1862,9 +1898,13 @@ import {
       const allTags = useMemo(() => collectTags(games), [games]);
       const toggleTag = (tag) => setSelectedTags(prev =>
         prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
-      const visibleGames = selectedTags.length === 0
-        ? games
-        : (games || []).filter(g => selectedTags.some(t => (g.tags || []).includes(t)));
+      const visibleGames = useMemo(() => {
+        let list = games || [];
+        if (selectedTags.length > 0) list = list.filter(g => selectedTags.some(t => (g.tags || []).includes(t)));
+        if (sortBy === 'plays-desc') list = [...list].sort((a, b) => (b.plays || 0) - (a.plays || 0));
+        else if (sortBy === 'plays-asc') list = [...list].sort((a, b) => (a.plays || 0) - (b.plays || 0));
+        return list;
+      }, [games, selectedTags, sortBy]);
 
       if (viewing) {
         return (
@@ -1886,13 +1926,30 @@ import {
           </p>
 
           {!loading && !error && games?.length > 0 && (
-            <TagFilterBar
-              allTags={allTags}
-              selected={selectedTags}
-              onToggle={toggleTag}
-              onClear={() => setSelectedTags([])}
-              style={{ marginBottom: '32px' }}
-            />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-start', marginBottom: '32px' }}>
+              <TagFilterBar
+                allTags={allTags}
+                selected={selectedTags}
+                onToggle={toggleTag}
+                onClear={() => setSelectedTags([])}
+                style={{ flex: 1 }}
+              />
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED }}>Sort:</span>
+                {[
+                  { key: 'plays-desc', label: '🎮 Most plays' },
+                  { key: 'plays-asc',  label: '🎮 Least plays' },
+                ].map(({ key, label }) => (
+                  <button key={key} onClick={() => setSortBy(key)} style={{
+                    fontFamily: "'IBM Plex Mono'", fontSize: '11px',
+                    background: sortBy === key ? PURPLE : `${PURPLE}18`,
+                    color: sortBy === key ? BG : PURPLE,
+                    border: `1px solid ${sortBy === key ? PURPLE : `${PURPLE}44`}`,
+                    borderRadius: '3px', padding: '4px 10px', cursor: 'pointer',
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
           )}
 
           {loading && <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: MUTED }}>Loading games<Cursor /></div>}
@@ -1925,6 +1982,7 @@ import {
                   {/* Embed thumbnail (non-interactive) */}
                   {game.itchUrl ? (
                     <iframe src={game.itchUrl} width="100%" height="167" frameBorder="0"
+                      sandbox="allow-scripts allow-same-origin"
                       style={{ display: 'block', pointerEvents: 'none' }} />
                   ) : (
                     <div style={{ height: '167px', background: '#09061a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1971,11 +2029,11 @@ import {
 
     // Fixed 5-tier definition — always shown, API items are bucketed into them
     const SHOP_TIERS_DEF = [
-      { num: 1, min: 10,   range: '10 players',   color: AMBER     },
-      { num: 2, min: 50,   range: '50 players',   color: GREEN     },
-      { num: 3, min: 100,  range: '100 players',  color: PURPLE    },
-      { num: 4, min: 500,  range: '500 players',  color: CORAL     },
-      { num: 5, min: 1000, range: '1000 players', color: '#ffd700' },
+      { num: 1, min: 5,  range: '5 players',  color: AMBER     },
+      { num: 2, min: 10, range: '10 players', color: GREEN     },
+      { num: 3, min: 20, range: '20 players', color: PURPLE    },
+      { num: 4, min: 40, range: '40 players', color: CORAL     },
+      { num: 5, min: 60, range: '60 players', color: '#ffd700' },
     ];
 
     /* ─── Shop Page ───────────────────────────────────────────────────────── */
@@ -1994,16 +2052,13 @@ import {
         .map(p => p.airtableRecordId);
 
       useEffect(() => {
-        if (submittedIds.length === 0) { setPlaysReady(true); return; }
-        getPlayCounts(submittedIds)
-          .then(data => {
-            const total = Object.values(data.counts || {}).reduce((s, n) => s + n, 0);
-            setTotalPlays(total);
-          })
+        if (!user?.email) { setPlaysReady(true); return; }
+        getUserTotalPlays(user.email, submittedIds, user?.token)
+          .then(data => setTotalPlays(data.total || 0))
           .catch(() => {})
           .finally(() => setPlaysReady(true));
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [submittedIds.join(',')]);
+      }, [user?.email, submittedIds.join(',')]);
 
       useEffect(() => {
         getShopItems()
@@ -2026,7 +2081,7 @@ import {
         setOrderingId(item.id);
         setOrderMsg(null);
         try {
-          await placeShopOrder(user.email, item.id, totalHours, totalPlays);
+          await placeShopOrder(user.email, item.id, user?.token);
           setOrderMsg(`Ordered: ${item.title}`);
         } catch (err) {
           setOrderMsg(err.message || 'Order failed');
@@ -2130,10 +2185,10 @@ import {
                     </div>
                   </div>
 
-                  {/* Shop items */}
-                  <div style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* Shop items — 2 per row grid */}
+                  <div style={{ padding: '12px', flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignContent: 'start' }}>
                     {tierItems.length === 0 && (
-                      <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, lineHeight: 1.7, paddingTop: '4px' }}>
+                      <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, lineHeight: 1.7, paddingTop: '4px', gridColumn: '1 / -1' }}>
                         Coming soon<Cursor />
                       </div>
                     )}
@@ -2144,46 +2199,44 @@ import {
                         <div key={item.id} style={{
                           background: CARD,
                           border: `1px solid ${unlocked ? color + '55' : MUTED + '22'}`,
-                          borderRadius: '4px', padding: '14px',
-                          display: 'flex', flexDirection: 'column', gap: '6px',
+                          borderRadius: '4px',
+                          display: 'flex', flexDirection: 'column',
                           boxShadow: available ? `0 0 12px ${color}18` : 'none',
+                          overflow: 'hidden',
                         }}>
-                          {/* Optional image */}
-                          {item.image && (
+                          {/* Image sized naturally to its own dimensions */}
+                          {item.image ? (
+                            <img src={item.image} alt="" style={{ width: '100%', display: 'block', objectFit: 'contain' }} />
+                          ) : item.icon ? (
                             <div style={{
-                              background: '#0f0820', border: `1px solid ${MUTED}22`,
-                              borderRadius: '3px', height: '80px',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              overflow: 'hidden', marginBottom: '2px',
-                            }}>
-                              <img src={item.image} alt="" style={{ maxHeight: '72px', maxWidth: '100%', objectFit: 'contain' }} />
+                              padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '36px',
+                            }}>{item.icon}</div>
+                          ) : null}
+                          {/* Info strip */}
+                          <div style={{
+                            padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '3px',
+                            borderTop: `1px solid ${unlocked ? color + '33' : MUTED + '22'}`,
+                          }}>
+                            <div style={{ fontFamily: "'Press Start 2P'", fontSize: '7px', color: unlocked ? color : MUTED, lineHeight: 1.7 }}>
+                              {item.title}
                             </div>
-                          )}
-                          {/* Icon (emoji) if no image */}
-                          {!item.image && item.icon && (
-                            <div style={{ fontSize: '22px', lineHeight: 1 }}>{item.icon}</div>
-                          )}
-                          <div style={{ fontFamily: "'Press Start 2P'", fontSize: '8px', color: unlocked ? color : MUTED, lineHeight: 1.7 }}>
-                            {item.title}
+                            {item.coins > 0 && (
+                              <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', fontWeight: 700,
+                                color: canAfford ? AMBER : MUTED, lineHeight: 1.6 }}>
+                                ¢{item.coins}
+                                {unlocked && !canAfford && (
+                                  <div style={{ fontFamily: "'IBM Plex Mono'", fontWeight: 400, fontSize: '9px', marginTop: '2px', color: MUTED }}>
+                                    need {item.coins - totalCoins} more
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: unlocked ? CREAM : MUTED, lineHeight: 1.6 }}>
-                            {item.desc}
-                          </div>
-                          {item.coins > 0 && (
-                            <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', fontWeight: 700,
-                              color: canAfford ? AMBER : MUTED }}>
-                              ¢ {item.coins} coins
-                              {unlocked && !canAfford && (
-                                <span style={{ fontWeight: 400, marginLeft: '6px' }}>
-                                  ({item.coins - totalCoins} more needed)
-                                </span>
-                              )}
-                            </div>
-                          )}
                           {available && (
                             <ArcadeBtn
                               bg={GREEN} dark={GREEND}
-                              style={{ fontSize: '10px', marginTop: '4px', opacity: orderingId === item.id ? 0.6 : 1 }}
+                              style={{ fontSize: '9px', borderRadius: 0, opacity: orderingId === item.id ? 0.6 : 1 }}
                               onClick={() => handleOrder(item)}
                             >
                               {orderingId === item.id ? '…' : 'Order'}
@@ -2790,6 +2843,17 @@ import {
           setStatus(`You need at least ${tier.min} hours to submit at ${tier.label}.`);
           return;
         }
+        if (selectedProject.hackatimeProject) {
+          const duplicate = projects.find(p =>
+            p.id !== selectedProject.id &&
+            p.hackatimeProject === selectedProject.hackatimeProject &&
+            (p.submissionStatus === 'under-review' || p.submissionStatus === 'accepted')
+          );
+          if (duplicate) {
+            setStatus(`"${selectedProject.hackatimeProject}" has already been submitted as "${duplicate.name}". You can't submit the same Hackatime project twice.`);
+            return;
+          }
+        }
         setStatus('sending');
         try {
           let hours = selectedProject.hours || 0;
@@ -2804,7 +2868,7 @@ import {
           const srcMatch = rawEmbed.match(/src="([^"]+)"/);
           const embedUrl = srcMatch ? srcMatch[1] : rawEmbed;
           // Flush project data (including journal) to Airtable before submission
-          await saveUserProjects(user.email, projects, userRecordId).catch(() => {});
+          await saveUserProjects(user.email, projects, userRecordId, user.token).catch(() => {});
           const result = await submitProject({
             email:            user.email,
             firstName:        firstName.trim(),
@@ -2971,6 +3035,7 @@ import {
                     height="167"
                     frameBorder="0"
                     allowFullScreen
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
                     style={{ borderRadius: '4px', marginTop: '8px', maxWidth: '100%', display: 'block' }}
                   />
                 );
@@ -3054,10 +3119,12 @@ import {
       const [logs,        setLogs]        = useState(null);
       const [logsLoading, setLogsLoading] = useState(true);
       const [logsError,   setLogsError]   = useState(null);
-      const [reviewing,   setReviewing]   = useState(false);
-      const [reviewError, setReviewError] = useState(null);
-      const [feedback,    setFeedback]    = useState('');
-      const [postingFb,   setPostingFb]   = useState(false);
+      const [reviewing,     setReviewing]     = useState(false);
+      const [reviewError,   setReviewError]   = useState(null);
+      const [feedback,      setFeedback]      = useState('');
+      const [postingFb,     setPostingFb]     = useState(false);
+      const [savingAdj,     setSavingAdj]     = useState(false);
+      const [adjMsg,        setAdjMsg]        = useState(null);
 
       const v = record.fields || {};
       const f = fields || {};
@@ -3069,6 +3136,29 @@ import {
       const submitter = [v[f.firstName] || v['First Name'], v[f.lastName] || v['Last Name']].filter(Boolean).join(' ') || '—';
       const playableUrl = v[f.playableUrl] || v['Playable URL'] || '';
       const journalOnRecord = parseJournalField(v['Journal Data']);
+      const recordHours = v[f.hours] ?? v['Optional - Override Hours Spent'];
+
+      const [hoursOverride, setHoursOverride] = useState(recordHours != null ? String(recordHours) : '');
+      const [playsOverride, setPlaysOverride] = useState('');
+
+      const saveAdjustments = async () => {
+        if (hoursOverride === '' && playsOverride === '') return;
+        setSavingAdj(true);
+        setAdjMsg(null);
+        try {
+          await adminAdjust(
+            token, record.id,
+            hoursOverride !== '' ? Number(hoursOverride) : undefined,
+            playsOverride !== '' ? Number(playsOverride) : undefined,
+          );
+          setAdjMsg('Saved!');
+          setPlaysOverride('');
+        } catch (err) {
+          setAdjMsg(err.message);
+        } finally {
+          setSavingAdj(false);
+        }
+      };
 
       const loadLogs = useCallback(async () => {
         if (journalOnRecord) {
@@ -3100,12 +3190,16 @@ import {
         : (logs || []).flatMap(p => p.journalEntries || []);
 
       const review = async (st, withFeedback = false) => {
+        if (withFeedback && !feedback.trim()) {
+          setReviewError('Feedback is required to reject a submission for edits.');
+          return;
+        }
         setReviewing(true);
         setReviewError(null);
         try {
           if (withFeedback && feedback.trim()) {
             setPostingFb(true);
-            await postComment(record.id, user?.email || 'Admin', `[Feedback] ${feedback.trim()}`);
+            await postComment(record.id, user?.email || 'Admin', `[Feedback] ${feedback.trim()}`, token);
             setPostingFb(false);
             setFeedback('');
           }
@@ -3149,6 +3243,7 @@ import {
                       height="167"
                       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', display: 'block' }}
                       allowFullScreen
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
                     />
                   </div>
                 ) : (
@@ -3242,12 +3337,17 @@ import {
                   cursor: reviewing ? 'default' : 'pointer', opacity: reviewing ? 0.5 : 1, lineHeight: 1.8,
                 }}>Accept</button>
 
-                <button onClick={() => review(REVIEW.REJECTED, true)} disabled={reviewing} style={{
+                <button onClick={() => review(REVIEW.REJECTED, true)} disabled={reviewing || !feedback.trim()} title={!feedback.trim() ? 'Add feedback below before rejecting for edits' : undefined} style={{
                   fontFamily: "'Press Start 2P'", fontSize: '10px', color: CREAM,
                   background: '#0f0820', border: `2px solid ${MUTED}`, borderRadius: 0,
                   padding: '14px 20px', width: '100%', maxWidth: '200px',
-                  cursor: reviewing ? 'default' : 'pointer', opacity: reviewing ? 0.5 : 1, lineHeight: 1.8,
+                  cursor: (reviewing || !feedback.trim()) ? 'default' : 'pointer', opacity: (reviewing || !feedback.trim()) ? 0.5 : 1, lineHeight: 1.8,
                 }}>Reject for edits</button>
+                {!feedback.trim() && (
+                  <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, textAlign: 'center', maxWidth: '200px' }}>
+                    Add feedback below to reject for edits.
+                  </span>
+                )}
               </div>
 
               <div style={{ borderTop: `2px solid ${MUTED}`, padding: '16px' }}>
@@ -3271,7 +3371,7 @@ import {
                     if (!feedback.trim() || postingFb) return;
                     setPostingFb(true);
                     try {
-                      await postComment(record.id, user?.email || 'Admin', `[Feedback] ${feedback.trim()}`);
+                      await postComment(record.id, user?.email || 'Admin', `[Feedback] ${feedback.trim()}`, token);
                       setFeedback('');
                     } catch (err) { setReviewError(err.message); }
                     finally { setPostingFb(false); }
@@ -3279,6 +3379,53 @@ import {
                 >
                   {postingFb ? '…' : 'Send Feedback'}
                 </ArcadeBtn>
+              </div>
+
+              {/* ── Override hours / plays ── */}
+              <div style={{ borderTop: `2px solid ${MUTED}`, padding: '16px' }}>
+                <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: MUTED, marginBottom: '12px' }}>OVERRIDE</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginBottom: '4px' }}>Hours</div>
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={hoursOverride}
+                      onChange={e => setHoursOverride(e.target.value)}
+                      placeholder={recordHours != null ? String(recordHours) : 'e.g. 12'}
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
+                        fontFamily: "'IBM Plex Mono'", fontSize: '12px', padding: '7px 9px',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginBottom: '4px' }}>Play count</div>
+                    <input
+                      type="number" min="0"
+                      value={playsOverride}
+                      onChange={e => setPlaysOverride(e.target.value)}
+                      placeholder="e.g. 50"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
+                        fontFamily: "'IBM Plex Mono'", fontSize: '12px', padding: '7px 9px',
+                      }}
+                    />
+                  </div>
+                  <ArcadeBtn
+                    bg={AMBER}
+                    style={{ width: '100%', fontSize: '10px', opacity: (savingAdj || (hoursOverride === '' && playsOverride === '')) ? 0.5 : 1 }}
+                    onClick={saveAdjustments}
+                  >
+                    {savingAdj ? '…' : 'Save Overrides'}
+                  </ArcadeBtn>
+                  {adjMsg && (
+                    <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: adjMsg === 'Saved!' ? GREEN : CORAL }}>
+                      {adjMsg}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -3291,6 +3438,8 @@ import {
     }
 
     const EMPTY_SHOP_ITEM = { title: '', desc: '', coins: 0, minPlayers: 10, image: '', active: true };
+    // 20 coins/hr × $5/hr wage → $1 = 4 coins
+    const COINS_PER_DOLLAR = 4;
 
     /* ─── Admin shop tab ──────────────────────────────────────────────────── */
     function AdminShopTab({ token }) {
@@ -3417,7 +3566,26 @@ import {
               </div>
               <div>
                 <label style={labelStyle}>Coins</label>
-                <input type="number" min="0" value={form.coins} onChange={e => setForm(f => ({ ...f, coins: Number(e.target.value) }))} style={fieldStyle} />
+                <input
+                  type="number" min="0" value={form.coins}
+                  onChange={e => setForm(f => ({ ...f, coins: Number(e.target.value) }))}
+                  style={fieldStyle}
+                />
+                <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginTop: '4px' }}>
+                  = ${(form.coins / COINS_PER_DOLLAR).toFixed(2)} real-world value
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>Real-world value ($)</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={(form.coins / COINS_PER_DOLLAR).toFixed(2)}
+                  onChange={e => setForm(f => ({ ...f, coins: Math.round(Number(e.target.value) * COINS_PER_DOLLAR) }))}
+                  style={fieldStyle}
+                />
+                <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginTop: '4px' }}>
+                  = ¢{form.coins} coins
+                </div>
               </div>
               <div>
                 <label style={labelStyle}>Min players</label>
@@ -3448,7 +3616,7 @@ import {
                   <div>
                     <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: AMBER, marginBottom: '6px', lineHeight: 1.6 }}>{item.title}</div>
                     <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED }}>
-                      ¢ {item.coins} · {item.minPlayers} players{item.active === false ? ' · inactive' : ''}
+                      ¢ {item.coins} (${(item.coins / COINS_PER_DOLLAR).toFixed(2)}) · {item.minPlayers} players{item.active === false ? ' · inactive' : ''}
                     </div>
                   </div>
                 </div>
@@ -3459,6 +3627,569 @@ import {
               </div>
             ))}
           </div>
+        </div>
+      );
+    }
+
+    /* ─── Admin User Detail — Hackatime account overview ─────────────────── */
+    function AdminUserDetail({ email, submissions, fields, onBack }) {
+      const f = fields || {};
+
+      // Derive account info from submissions (all recs share the same user)
+      const first    = submissions[0]?.fields || {};
+      const name     = [first[f.firstName || 'First Name'], first[f.lastName || 'Last Name']].filter(Boolean).join(' ');
+      const ghUser   = first[f.githubUser || 'GitHub Username'] || '';
+      const totalH   = submissions.reduce((sum, r) => {
+        const h = r.fields?.[f.hours || 'Optional - Override Hours Spent'];
+        return sum + (h != null ? Number(h) : 0);
+      }, 0);
+      const statuses = submissions.map(r => normalizeReviewStatus(r.fields?.[f.reviewStatus || 'Review Status'] || ''));
+      const accepted = statuses.filter(s => s === 'accepted').length;
+      const pending  = statuses.filter(s => s === 'under-review').length;
+      const rejected = statuses.filter(s => s === 'rejected').length;
+
+      const rowSt = { display: 'flex', flexDirection: 'column', gap: '4px' };
+      const lblSt = { fontFamily: "'Press Start 2P'", fontSize: '8px', color: MUTED, lineHeight: 1.6 };
+      const valSt = { fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: CREAM, lineHeight: 1.5 };
+
+      return (
+        <div className="fade-in">
+          <button onClick={onBack} style={{
+            background: 'none', border: 'none', color: PURPLE, cursor: 'pointer',
+            fontFamily: "'IBM Plex Mono'", fontSize: '14px', marginBottom: '28px',
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}>← Back to Users</button>
+
+          {/* Account card */}
+          <div style={{
+            background: CARD, border: `2px solid ${PURPLE}`, borderRadius: '6px',
+            padding: '28px 32px', marginBottom: '28px', maxWidth: '560px',
+          }}>
+            <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: MUTED, marginBottom: '20px' }}>HACKATIME ACCOUNT</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              {name && (
+                <div style={{ ...rowSt, gridColumn: '1 / -1' }}>
+                  <span style={lblSt}>NAME</span>
+                  <span style={{ ...valSt, fontSize: '18px', color: AMBER }}>{name}</span>
+                </div>
+              )}
+              <div style={rowSt}>
+                <span style={lblSt}>EMAIL</span>
+                <span style={{ ...valSt, fontSize: '12px', wordBreak: 'break-all' }}>{email}</span>
+              </div>
+              {ghUser && (
+                <div style={rowSt}>
+                  <span style={lblSt}>HACKATIME / GITHUB</span>
+                  <a
+                    href={`https://hackatime.hackclub.com/@${ghUser}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ ...valSt, fontSize: '13px', color: PURPLE, textDecoration: 'none' }}
+                  >
+                    @{ghUser} ↗
+                  </a>
+                </div>
+              )}
+              <div style={rowSt}>
+                <span style={lblSt}>TOTAL HOURS (LOGGED)</span>
+                <span style={{ ...valSt, color: GREEN }}>{totalH}h</span>
+              </div>
+              <div style={rowSt}>
+                <span style={lblSt}>SUBMISSIONS</span>
+                <span style={valSt}>
+                  {submissions.length} total
+                  {accepted > 0 && <span style={{ color: GREEN }}> · {accepted} accepted</span>}
+                  {pending  > 0 && <span style={{ color: AMBER }}> · {pending} pending</span>}
+                  {rejected > 0 && <span style={{ color: CORAL }}> · {rejected} rejected</span>}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Submission status list */}
+          <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: MUTED, marginBottom: '12px' }}>SUBMISSIONS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {submissions.map(rec => {
+              const desc  = rec.fields?.[f.description || 'Description'] || '';
+              const sName = desc.split(' — ')[0]?.trim() || '(untitled)';
+              const revSt = rec.fields?.[f.reviewStatus || 'Review Status'] || '';
+              const norm  = normalizeReviewStatus(revSt);
+              const hours = rec.fields?.[f.hours || 'Optional - Override Hours Spent'];
+              return (
+                <div key={rec.id} style={{
+                  background: CARD, border: `1px solid ${PURPLE}44`,
+                  borderRadius: '4px', padding: '12px 16px',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  gap: '12px', flexWrap: 'wrap',
+                }}>
+                  <div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, marginBottom: '3px' }}>{sName}</div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED }}>
+                      {hours != null ? `${hours}h` : 'no hours override'}
+                    </div>
+                  </div>
+                  {revSt && (
+                    <span style={{
+                      fontFamily: "'IBM Plex Mono'", fontSize: '10px', fontWeight: 700,
+                      color: BG, background: reviewStatusColor(norm || 'under-review'),
+                      padding: '3px 10px', whiteSpace: 'nowrap',
+                    }}>{revSt}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    /* ─── Admin Projects Tab ──────────────────────────────────────────────── */
+    function AdminProjectsTab({ records, fields, token }) {
+      const [search,          setSearch]          = useState('');
+      const [selectedEmail,   setSelectedEmail]   = useState(null);
+      const [userProjects,    setUserProjects]     = useState(null);
+      const [loading,         setLoading]          = useState(false);
+      const [loadError,       setLoadError]        = useState(null);
+      const [adjusting,       setAdjusting]        = useState({});
+      const [saving,          setSaving]           = useState({});
+      const [saveMsg,         setSaveMsg]          = useState({});
+      const [userPlaysInput,  setUserPlaysInput]   = useState('');
+      const [savingUserPlays, setSavingUserPlays]  = useState(false);
+      const [userPlaysMsg,    setUserPlaysMsg]      = useState(null);
+
+      const f = fields || {};
+
+      const userMap = {};
+      for (const r of records) {
+        const email = r.fields?.[f.email || 'Email'] || '(no email)';
+        if (!userMap[email]) userMap[email] = [];
+        userMap[email].push(r);
+      }
+      const userList = Object.entries(userMap)
+        .filter(([email]) => !search.trim() || email.toLowerCase().includes(search.trim().toLowerCase()))
+        .sort((a, b) => a[0].localeCompare(b[0]));
+
+      const selectUser = async (email) => {
+        setSelectedEmail(email);
+        setUserProjects(null);
+        setLoadError(null);
+        setLoading(true);
+        setAdjusting({});
+        setSaveMsg({});
+        setUserPlaysInput('');
+        setUserPlaysMsg(null);
+        try {
+          const data = await adminUserProjects(token, email);
+          setUserProjects(data.projects || []);
+        } catch (err) {
+          setLoadError(err.message || 'Failed to load');
+          setUserProjects([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const doSetUserPlays = async () => {
+        if (userPlaysInput === '') return;
+        setSavingUserPlays(true); setUserPlaysMsg(null);
+        try {
+          await adminSetUserPlays(token, selectedEmail, Number(userPlaysInput));
+          setUserPlaysMsg(`Set to ${userPlaysInput} players ✓`);
+          setUserPlaysInput('');
+        } catch (err) {
+          setUserPlaysMsg(err.message);
+        } finally { setSavingUserPlays(false); }
+      };
+
+      const getAdj = (rec) =>
+        adjusting[rec.id] || {
+          hours: String(rec.fields?.[f.hours || 'Optional - Override Hours Spent'] ?? ''),
+          plays: '',
+        };
+
+      const setAdj = (recId, patch) =>
+        setAdjusting(prev => ({ ...prev, [recId]: { ...getAdj({ id: recId, fields: {} }), ...prev[recId], ...patch } }));
+
+      const doAdjust = async (rec) => {
+        const adj = getAdj(rec);
+        const hasHours = adj.hours !== '';
+        const hasPlays = adj.plays !== '';
+        if (!hasHours && !hasPlays) return;
+        setSaving(p => ({ ...p, [rec.id]: true }));
+        setSaveMsg(p => ({ ...p, [rec.id]: null }));
+        try {
+          await adminAdjust(token, rec.id,
+            hasHours ? Number(adj.hours) : undefined,
+            hasPlays ? Number(adj.plays) : undefined,
+          );
+          setSaveMsg(p => ({ ...p, [rec.id]: 'Saved!' }));
+          if (hasPlays) setAdjusting(prev => ({ ...prev, [rec.id]: { ...prev[rec.id], plays: '' } }));
+        } catch (err) {
+          setSaveMsg(p => ({ ...p, [rec.id]: err.message }));
+        } finally {
+          setSaving(p => ({ ...p, [rec.id]: false }));
+        }
+      };
+
+      const inputSt = {
+        background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
+        fontFamily: "'IBM Plex Mono'", fontSize: '12px', padding: '6px 8px',
+        width: '90px', boxSizing: 'border-box',
+      };
+      const labelSt = { fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginBottom: '3px', display: 'block' };
+
+      if (selectedEmail) {
+        const recs = userMap[selectedEmail] || [];
+        const name = [
+          recs[0]?.fields?.[f.firstName || 'First Name'],
+          recs[0]?.fields?.[f.lastName  || 'Last Name'],
+        ].filter(Boolean).join(' ');
+        return (
+          <div className="fade-in">
+            <button onClick={() => { setSelectedEmail(null); setUserProjects(null); }} style={{
+              background: 'none', border: 'none', color: PURPLE, cursor: 'pointer',
+              fontFamily: "'IBM Plex Mono'", fontSize: '14px', marginBottom: '24px',
+              display: 'flex', alignItems: 'center', gap: '6px',
+            }}>← Back to Users</button>
+
+            {name && <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '12px', color: AMBER, marginBottom: '4px', lineHeight: 1.6 }}>{name}</h2>}
+            <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '20px' }}>{selectedEmail}</div>
+
+            {/* User-level total players override */}
+            <div style={{ background: `${AMBER}11`, border: `1px solid ${AMBER}44`, borderRadius: '6px', padding: '16px', marginBottom: '28px', display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontFamily: "'Press Start 2P'", fontSize: '8px', color: AMBER, marginBottom: '6px' }}>TOTAL PLAYERS OVERRIDE</div>
+                <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '10px' }}>Sets this user's shop player count directly — overrides all per-game play tracking.</div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <input
+                    type="number" min="0" placeholder="e.g. 25"
+                    value={userPlaysInput}
+                    onChange={e => setUserPlaysInput(e.target.value)}
+                    style={{ background: '#0f0820', border: `1px solid ${AMBER}`, color: CREAM, fontFamily: "'IBM Plex Mono'", fontSize: '13px', padding: '8px 12px', width: '120px' }}
+                  />
+                  <ArcadeBtn bg={AMBER} dark="#a86f00" style={{ fontSize: '10px', opacity: savingUserPlays ? 0.5 : 1 }} onClick={doSetUserPlays}>
+                    {savingUserPlays ? '…' : 'Set Players'}
+                  </ArcadeBtn>
+                  {userPlaysMsg && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: userPlaysMsg.includes('✓') ? GREEN : CORAL }}>{userPlaysMsg}</span>}
+                </div>
+              </div>
+            </div>
+
+            {/* Submission records with adjust controls */}
+            <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: MUTED, marginBottom: '12px' }}>SUBMISSIONS</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '36px' }}>
+              {recs.map(rec => {
+                const desc  = rec.fields?.[f.description || 'Description'] || '';
+                const sName = desc.split(' — ')[0]?.trim() || '(untitled)';
+                const curH  = rec.fields?.[f.hours || 'Optional - Override Hours Spent'];
+                const revSt = rec.fields?.[f.reviewStatus || 'Review Status'] || '';
+                const norm  = normalizeReviewStatus(revSt);
+                const adj   = getAdj(rec);
+                const busy  = saving[rec.id];
+                const msg   = saveMsg[rec.id];
+                return (
+                  <div key={rec.id} style={{ background: CARD, border: `1px solid ${PURPLE}`, borderRadius: '4px', padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+                      <div>
+                        <div style={{ fontFamily: "'Press Start 2P'", fontSize: '10px', color: AMBER, marginBottom: '4px', lineHeight: 1.6 }}>{sName}</div>
+                        <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED }}>
+                          Hours on record: {curH != null ? `${curH}h` : 'none'}
+                        </div>
+                      </div>
+                      {revSt && (
+                        <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', fontWeight: 700, color: BG, background: reviewStatusColor(norm || 'under-review'), padding: '3px 10px' }}>
+                          {revSt}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <div>
+                        <label style={labelSt}>Override Hours</label>
+                        <input type="number" min="0" step="0.5" value={adj.hours} onChange={e => setAdj(rec.id, { hours: e.target.value })} placeholder="e.g. 12" style={inputSt} />
+                      </div>
+                      <div>
+                        <label style={labelSt}>Set Play Count</label>
+                        <input type="number" min="0" value={adj.plays} onChange={e => setAdj(rec.id, { plays: e.target.value })} placeholder="e.g. 50" style={inputSt} />
+                      </div>
+                      <ArcadeBtn bg={GREEN} dark={GREEND} style={{ fontSize: '10px', opacity: busy ? 0.5 : 1 }} onClick={() => doAdjust(rec)}>
+                        {busy ? '…' : 'Save'}
+                      </ArcadeBtn>
+                      {msg && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: msg === 'Saved!' ? GREEN : CORAL }}>{msg}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* User Projects table data */}
+            <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: MUTED, marginBottom: '12px' }}>USER PROJECTS</div>
+            {loading && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED }}>Loading…</p>}
+            {loadError && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: CORAL }}>{loadError}</p>}
+            {!loading && userProjects?.length === 0 && (
+              <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED, fontStyle: 'italic' }}>No project data found.</p>
+            )}
+            {!loading && userProjects && userProjects.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {userProjects.map((p, i) => (
+                  <div key={p.id || i} style={{ background: CARD, border: `1px solid ${PURPLE}44`, borderRadius: '4px', padding: '14px 18px' }}>
+                    <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: PURPLE, marginBottom: '6px', lineHeight: 1.6 }}>{p.name || '(unnamed)'}</div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED, lineHeight: 1.8 }}>
+                      {p.hours != null ? `${p.hours}h` : 'no hours'} · {p.journalEntries?.length ?? 0} log entries
+                      {p.submissionStatus ? ` · ${p.submissionStatus}` : ''}
+                      {p.hackatimeProject ? ` · ${p.hackatimeProject}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div>
+          <div style={{ marginBottom: '20px' }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by email…"
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
+                fontFamily: "'IBM Plex Mono'", fontSize: '13px', padding: '10px 14px',
+              }}
+            />
+          </div>
+
+          {userList.length === 0 && (
+            <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, fontStyle: 'italic' }}>
+              {search ? 'No users match.' : 'No submissions yet.'}
+            </p>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {userList.map(([email, recs]) => {
+              const name = [
+                recs[0]?.fields?.[f.firstName || 'First Name'],
+                recs[0]?.fields?.[f.lastName  || 'Last Name'],
+              ].filter(Boolean).join(' ');
+              return (
+                <div key={email} style={{
+                  background: CARD, border: `1px solid ${PURPLE}`, borderRadius: '4px',
+                  padding: '14px 18px', display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+                }}>
+                  <div>
+                    {name && <div style={{ fontFamily: "'Press Start 2P'", fontSize: '10px', color: AMBER, marginBottom: '4px', lineHeight: 1.6 }}>{name}</div>}
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: PURPLE }}>{email}</div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginTop: '3px' }}>
+                      {recs.length} submission{recs.length !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                  <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '10px' }} onClick={() => selectUser(email)}>
+                    View Projects
+                  </ArcadeBtn>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    /* ─── Admin Users Tab ─────────────────────────────────────────────────── */
+    function AdminUsersTab({ records, fields, token }) {
+      const [search,        setSearch]        = useState('');
+      const [selectedEmail, setSelectedEmail] = useState(null);
+
+      const f = fields || {};
+
+      const userMap = {};
+      for (const r of records) {
+        const email = r.fields?.[f.email || 'Email'] || '(no email)';
+        if (!userMap[email]) userMap[email] = [];
+        userMap[email].push(r);
+      }
+      const userList = Object.entries(userMap)
+        .filter(([email]) => !search.trim() || email.toLowerCase().includes(search.trim().toLowerCase()))
+        .sort((a, b) => a[0].localeCompare(b[0]));
+
+      if (selectedEmail) {
+        return (
+          <AdminUserDetail
+            email={selectedEmail}
+            submissions={userMap[selectedEmail] || []}
+            fields={fields}
+            token={token}
+            onBack={() => setSelectedEmail(null)}
+          />
+        );
+      }
+
+      return (
+        <div>
+          <div style={{ marginBottom: '20px' }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by email…"
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
+                fontFamily: "'IBM Plex Mono'", fontSize: '13px', padding: '10px 14px',
+              }}
+            />
+          </div>
+
+          {userList.length === 0 && (
+            <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, fontStyle: 'italic' }}>
+              {search ? 'No users match.' : 'No submissions yet.'}
+            </p>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {userList.map(([email, recs]) => {
+              const name = [
+                recs[0]?.fields?.[f.firstName || 'First Name'],
+                recs[0]?.fields?.[f.lastName  || 'Last Name'],
+              ].filter(Boolean).join(' ');
+              return (
+                <div key={email} style={{
+                  background: CARD, border: `1px solid ${PURPLE}`, borderRadius: '4px',
+                  padding: '14px 18px', display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+                }}>
+                  <div>
+                    {name && (
+                      <div style={{ fontFamily: "'Press Start 2P'", fontSize: '10px', color: AMBER, marginBottom: '4px', lineHeight: 1.6 }}>{name}</div>
+                    )}
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: PURPLE }}>{email}</div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginTop: '3px' }}>
+                      {recs.length} submission{recs.length !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                  <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '10px' }} onClick={() => setSelectedEmail(email)}>
+                    View
+                  </ArcadeBtn>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    /* ─── Admin Manage Admins Tab (T2 only) ─────────────────────────────── */
+    function AdminManageAdminsTab({ token }) {
+      const [t1,      setT1]      = useState([]);
+      const [t2,      setT2]      = useState([]);
+      const [envT1,   setEnvT1]   = useState([]);
+      const [envT2,   setEnvT2]   = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error,   setError]   = useState(null);
+      const [newEmail, setNewEmail] = useState('');
+      const [newTier,  setNewTier]  = useState(1);
+      const [saving,   setSaving]   = useState(false);
+
+      const load = useCallback(async () => {
+        setLoading(true); setError(null);
+        try {
+          const d = await adminListAdmins(token);
+          setT1(d.t1 || []); setT2(d.t2 || []);
+          setEnvT1(d.envT1 || []); setEnvT2(d.envT2 || []);
+        } catch (err) { setError(err.message); }
+        finally { setLoading(false); }
+      }, [token]);
+
+      useEffect(() => { load(); }, [load]);
+
+      const addAdmin = async (e) => {
+        e.preventDefault();
+        if (!newEmail.trim()) return;
+        setSaving(true); setError(null);
+        try {
+          const d = await adminAddAdmin(token, newEmail.trim(), newTier);
+          setT1(d.t1 || []); setT2(d.t2 || []);
+          setNewEmail(''); setNewTier(1);
+        } catch (err) { setError(err.message); }
+        finally { setSaving(false); }
+      };
+
+      const removeAdmin = async (email) => {
+        if (!confirm(`Remove ${email} from admins?`)) return;
+        setError(null);
+        try {
+          const d = await adminRemoveAdmin(token, email);
+          setT1(d.t1 || []); setT2(d.t2 || []);
+        } catch (err) { setError(err.message); }
+      };
+
+      const isEnvAdmin = (email) => envT1.includes(email.toLowerCase()) || envT2.includes(email.toLowerCase());
+
+      const inputSt = {
+        background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
+        fontFamily: "'IBM Plex Mono'", fontSize: '13px', padding: '8px 12px', boxSizing: 'border-box',
+      };
+
+      return (
+        <div>
+          {error && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: CORAL, marginBottom: '16px' }}>{error}</p>}
+          {loading && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED }}>Loading…</p>}
+
+          {/* Add admin form */}
+          <form onSubmit={addAdmin} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '32px' }}>
+            <div style={{ flex: 1, minWidth: '220px' }}>
+              <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '4px' }}>Email</div>
+              <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="user@example.com" style={{ ...inputSt, width: '100%' }} required />
+            </div>
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, marginBottom: '4px' }}>Tier</div>
+              <select value={newTier} onChange={e => setNewTier(Number(e.target.value))} style={{ ...inputSt, cursor: 'pointer' }}>
+                <option value={1}>T1 — Basic admin</option>
+                <option value={2}>T2 — Super admin</option>
+              </select>
+            </div>
+            <ArcadeBtn type="submit" bg={GREEN} dark={GREEND} style={{ fontSize: '10px', opacity: saving ? 0.5 : 1 }}>
+              {saving ? '…' : '+ Add Admin'}
+            </ArcadeBtn>
+          </form>
+
+          {/* T2 list */}
+          {!loading && (
+            <>
+              <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: '#ffd700', marginBottom: '10px' }}>T2 — SUPER ADMINS</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '28px' }}>
+                {t2.length === 0 && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED, fontStyle: 'italic' }}>None</p>}
+                {t2.map(email => (
+                  <div key={email} style={{ background: CARD, border: `1px solid #ffd70044`, borderRadius: '4px', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <div>
+                      <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM }}>{email}</span>
+                      {isEnvAdmin(email) && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginLeft: '10px' }}>(env)</span>}
+                    </div>
+                    {!isEnvAdmin(email) && (
+                      <button onClick={() => removeAdmin(email)} style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: CORAL, background: 'none', border: `1px solid ${CORAL}44`, padding: '3px 10px', cursor: 'pointer' }}>Remove</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color: AMBER, marginBottom: '10px' }}>T1 — BASIC ADMINS</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {t1.length === 0 && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED, fontStyle: 'italic' }}>None</p>}
+                {t1.map(email => (
+                  <div key={email} style={{ background: CARD, border: `1px solid ${AMBER}44`, borderRadius: '4px', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <div>
+                      <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM }}>{email}</span>
+                      {isEnvAdmin(email) && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: MUTED, marginLeft: '10px' }}>(env)</span>}
+                    </div>
+                    {!isEnvAdmin(email) && (
+                      <button onClick={() => removeAdmin(email)} style={{ fontFamily: "'IBM Plex Mono'", fontSize: '10px', color: CORAL, background: 'none', border: `1px solid ${CORAL}44`, padding: '3px 10px', cursor: 'pointer' }}>Remove</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       );
     }
@@ -3561,16 +4292,19 @@ import {
         <div className="fade-in" style={{ padding: '48px 40px 60px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
             <h1 style={{ fontFamily: "'Press Start 2P'", fontSize: '18px', color: AMBER, lineHeight: 1.5 }}>ADMIN</h1>
-            {tab !== 'shop' && <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '11px' }} onClick={load}>↻ Refresh</ArcadeBtn>}
+            {['pending','reviewed'].includes(tab) && <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '11px' }} onClick={load}>↻ Refresh</ArcadeBtn>}
           </div>
 
           {/* Tabs */}
           <div style={{ display: 'flex', gap: '0', marginBottom: '28px', borderBottom: `2px solid ${AMBER}33` }}>
             {[
-              { key: 'pending',  label: 'Pending Review', count: pendingRecords.length,  color: AMBER  },
-              { key: 'reviewed', label: 'Reviewed',       count: reviewedRecords.length, color: GREEN  },
-              { key: 'shop',     label: 'Shop',           count: null,                   color: PURPLE },
-            ].map(({ key, label, count, color }) => (
+              { key: 'pending',  label: 'Pending Review', count: pendingRecords.length,  color: AMBER,     minTier: 1 },
+              { key: 'reviewed', label: 'Reviewed',       count: reviewedRecords.length, color: GREEN,     minTier: 1 },
+              { key: 'users',    label: 'Users',          count: null,                   color: CORAL,     minTier: 1 },
+              { key: 'projects', label: 'Projects',       count: null,                   color: PURPLE,    minTier: 1 },
+              { key: 'shop',     label: 'Shop',           count: null,                   color: PURPLE,    minTier: 2 },
+              { key: 'admins',   label: 'Manage Admins',  count: null,                   color: '#ffd700', minTier: 2 },
+            ].filter(t => (user?.adminTier || 0) >= t.minTier).map(({ key, label, count, color }) => (
               <button key={key} onClick={() => { setTab(key); setViewingId(null); setSelectedTags([]); }} style={{
                 fontFamily: "'Press Start 2P'", fontSize: '10px',
                 padding: '10px 20px',
@@ -3594,9 +4328,12 @@ import {
             ))}
           </div>
 
-          {tab === 'shop' && <AdminShopTab token={token} />}
+          {tab === 'shop'     && <AdminShopTab token={token} />}
+          {tab === 'users'    && <AdminUsersTab    records={records} fields={fields} token={token} />}
+          {tab === 'projects' && <AdminProjectsTab records={records} fields={fields} token={token} />}
+          {tab === 'admins'   && <AdminManageAdminsTab token={token} />}
 
-          {tab !== 'shop' && allTags.length > 0 && (
+          {['pending','reviewed'].includes(tab) && allTags.length > 0 && (
             <TagFilterBar
               allTags={allTags}
               selected={selectedTags}
@@ -3606,15 +4343,15 @@ import {
             />
           )}
 
-          {tab !== 'shop' && error && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CORAL, marginBottom: '20px' }}>{error}</p>}
-          {tab !== 'shop' && shown.length === 0 && (
+          {['pending','reviewed'].includes(tab) && error && <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CORAL, marginBottom: '20px' }}>{error}</p>}
+          {['pending','reviewed'].includes(tab) && shown.length === 0 && (
             <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: MUTED, fontStyle: 'italic' }}>
               {selectedTags.length > 0
                 ? `No ${tab === 'pending' ? 'pending' : 'reviewed'} submissions match the selected ${selectedTags.length > 1 ? 'tags' : 'tag'}.`
                 : (tab === 'pending' ? 'No submissions awaiting review.' : 'No reviewed submissions yet.')}
             </p>
           )}
-          {tab !== 'shop' && (
+          {['pending','reviewed'].includes(tab) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {shown.map(r => (
                 <AdminSubmissionRow
@@ -3667,7 +4404,7 @@ import {
         localStorage.setItem(key, JSON.stringify(projects));
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
-          saveUserProjects(user.email, projects, userRecordId)
+          saveUserProjects(user.email, projects, userRecordId, user.token)
             .then(d => { if (d.recordId && d.recordId !== userRecordId) setUserRecordId(d.recordId); })
             .catch(err => console.warn('[sync] Failed to save projects to server:', err.message));
         }, 2000);
@@ -3678,7 +4415,7 @@ import {
         if (!user?.email) return;
         const syncStatuses = async () => {
           try {
-            const subs = await getMySubmissions(user.email);
+            const subs = await getMySubmissions(user.email, user.token);
             setProjects(prev => {
               const merged = mergeSubmissionStatuses(prev, subs.submissions || []);
               const key = projectsStorageKey(user.email);
@@ -3710,12 +4447,19 @@ import {
           const proj = await getHackatimeProjects(token).catch(() => null);
           const list = proj?.data?.data || proj?.data?.projects || proj?.data || [];
           setHtProjects(Array.isArray(list) ? list : []);
-          const isAdmin = await adminCheck(token).then(r => r?.success === true).catch(() => false);
+          const adminData = await adminCheck(token).catch(() => null);
+          const isAdmin   = !!adminData?.success;
+          const adminTier = adminData?.tier || 0;
+          const displayName = me.displayName
+            || (me.firstName ? `${me.firstName} ${me.lastName}`.trim() : null)
+            || me.githubUsername
+            || me.email;
           const u = {
             email: me.email,
-            username: me.email,
+            username: displayName,
             token,
             isAdmin,
+            adminTier,
             githubUsername: me.githubUsername || null,
             firstName: me.firstName || '',
             lastName: me.lastName || '',
@@ -3724,8 +4468,9 @@ import {
           localStorage.setItem('ht_token', token);
           localStorage.setItem('ic_user', JSON.stringify({
             email: me.email,
-            username: me.email,
+            username: displayName,
             isAdmin,
+            adminTier,
             githubUsername: u.githubUsername,
             firstName: u.firstName,
             lastName: u.lastName,
@@ -3733,13 +4478,13 @@ import {
 
           // Load this user's projects from Airtable (server is source of truth in production)
           try {
-            const saved = await loadUserProjects(me.email);
+            const saved = await loadUserProjects(me.email, token);
             const key = projectsStorageKey(me.email);
             let loaded = saved.projects?.length > 0
               ? saved.projects
               : JSON.parse(localStorage.getItem(key) || '[]');
             try {
-              const subs = await getMySubmissions(me.email);
+              const subs = await getMySubmissions(me.email, token);
               loaded = mergeSubmissionStatuses(loaded, subs.submissions || []);
             } catch {}
             setProjects(loaded);
@@ -3748,7 +4493,9 @@ import {
           } catch {} // Keep email-scoped localStorage if Airtable fails
         };
 
-        if (code && state === 'hackatime') {
+        const storedState = sessionStorage.getItem('oauth_state');
+        if (code && storedState && state === storedState) {
+          sessionStorage.removeItem('oauth_state');
           setAuthPending(true);
           // Strip code from URL immediately so it's not re-used on refresh
           window.history.replaceState({}, document.title, window.location.origin + '/');

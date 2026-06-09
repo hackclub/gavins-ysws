@@ -4,11 +4,6 @@ import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 
-// School/corporate networks often intercept HTTPS with their own CA, which Node
-// rejects by default. Allow outbound API calls in local dev only.
-if (process.env.NODE_ENV !== 'production') {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-}
 
 dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.env') });
 
@@ -30,9 +25,11 @@ const AIRTABLE_TABLE      = process.env.AIRTABLE_TABLE      || 'tbluyQdN8QAo3rT6
 const AIRTABLE_USER_TABLE      = process.env.AIRTABLE_USER_TABLE      || 'User Projects';
 const AIRTABLE_SHOP_ITEMS_TABLE = process.env.AIRTABLE_SHOP_ITEMS_TABLE || 'Shop Items';
 const AIRTABLE_SHOP_ORDERS_TABLE = process.env.AIRTABLE_SHOP_ORDERS_TABLE || 'Shop Orders';
-// Comma-separated list of emails allowed to access the admin panel
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
-  .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+// T1 = basic admins (review, users, projects). T2 = super admins (+ shop, manage admins).
+// ADMIN_EMAILS = T2 super admins (backwards-compatible with existing .env).
+// ADMIN_T1_EMAILS = T1 basic admins.
+const ADMIN_T2_EMAILS = (process.env.ADMIN_EMAILS    || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+const ADMIN_T1_EMAILS = (process.env.ADMIN_T1_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 
 // ── Airtable field-name mapping ──────────────────────────────────────────
 // EDIT THESE to match the exact field names in your Airtable table.
@@ -60,6 +57,30 @@ const PLAYS_PATH       = path.join(__dirname, '.play-counts.json');
 const COMMENTS_PATH    = path.join(__dirname, '.comments.json');
 const SHOP_ITEMS_PATH  = path.join(__dirname, '.shop-items.json');
 const SHOP_ORDERS_PATH = path.join(__dirname, '.shop-orders.json');
+const ADMIN_LIST_PATH  = path.join(__dirname, '.admin-list.json');
+const USER_PLAYS_PATH  = path.join(__dirname, '.user-plays.json');
+
+async function loadAdminList() {
+  try { return JSON.parse(await fs.readFile(ADMIN_LIST_PATH, 'utf8')); } catch { return { t1: [], t2: [] }; }
+}
+async function saveAdminList(data) {
+  await fs.writeFile(ADMIN_LIST_PATH, JSON.stringify(data, null, 2));
+}
+
+async function loadUserPlays() {
+  try { return JSON.parse(await fs.readFile(USER_PLAYS_PATH, 'utf8')); } catch { return {}; }
+}
+async function saveUserPlays(data) {
+  await fs.writeFile(USER_PLAYS_PATH, JSON.stringify(data, null, 2));
+}
+
+async function getAdminTier(email) {
+  const lower = email.toLowerCase();
+  const list  = await loadAdminList();
+  if (ADMIN_T2_EMAILS.includes(lower) || list.t2.map(e => e.toLowerCase()).includes(lower)) return 2;
+  if (ADMIN_T1_EMAILS.includes(lower) || list.t1.map(e => e.toLowerCase()).includes(lower)) return 1;
+  return 0;
+}
 const COINS_PER_HOUR   = 20;
 
 const DEFAULT_SHOP_ITEMS = [
@@ -775,6 +796,50 @@ async function fetchHackatimeProjectHours(accessToken, projectName) {
   return match ? +((match.total_seconds || 0) / 3600).toFixed(1) : 0;
 }
 
+async function fetchHackatimeTotalHours(accessToken) {
+  const basicCreds = Buffer.from(`${accessToken}:`).toString('base64');
+  const attempts = [
+    { url: 'https://hackatime.hackclub.com/api/v1/users/current/projects', auth: `Basic ${basicCreds}` },
+    { url: 'https://hackatime.hackclub.com/api/v1/users/current/projects', auth: `Bearer ${accessToken}` },
+  ];
+  for (const { url, auth } of attempts) {
+    const r = await fetch(url, { headers: { Authorization: auth } });
+    if (!r.ok) continue;
+    try {
+      const d = await r.json();
+      const list = Array.isArray(d?.projects || d?.data || d)
+        ? (d?.projects || d?.data || d)
+        : Object.values(d?.projects || d?.data || d);
+      return +((list.reduce((s, p) => s + (p.total_seconds || 0), 0) / 3600).toFixed(1));
+    } catch {}
+  }
+  return 0;
+}
+
+async function getUserTotalPlaysServerSide(email) {
+  const overrides = await loadUserPlays();
+  const override = overrides[email.toLowerCase()];
+  if (override !== undefined) return override;
+  if (!AIRTABLE_PAT) return 0;
+  const url = new URL(airtableUrl());
+  url.searchParams.set('filterByFormula', `{Email}="${email.replace(/"/g, '\\"')}"`);
+  url.searchParams.set('pageSize', '100');
+  let gameIds = [], offset;
+  do {
+    const pageUrl = new URL(url);
+    if (offset) pageUrl.searchParams.set('offset', offset);
+    const r = await fetch(pageUrl, { headers: airtableHeaders() });
+    const data = await r.json().catch(() => null);
+    if (!r.ok) break;
+    (data.records || [])
+      .filter(rec => isAcceptedReviewStatus(rec.fields?.[FIELDS.reviewStatus]))
+      .forEach(rec => gameIds.push(rec.id));
+    offset = data.offset;
+  } while (offset);
+  const allPlays = await loadPlays();
+  return gameIds.reduce((sum, id) => sum + (allPlays[id] || 0), 0);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    HACKATIME OAUTH
    ───────────────────────────────────────────────────────────────────────── */
@@ -936,26 +1001,32 @@ app.post('/api/submit-project', async (req, res) => {
     if (!AIRTABLE_PAT) return res.status(500).json({ error: 'Airtable not configured on the server.' });
     let { email, firstName, lastName, description, playableUrl, githubUser, hours, accessToken, hackatimeProject, journalEntries, tags } = req.body;
 
-    // Fill any missing Airtable fields from Hackatime when the user is signed in.
-    if (accessToken) {
+    // Require authentication and verify email ownership
+    if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
+    const ht = await fetchHackatimeProfile(accessToken).catch(() => null);
+    if (!ht?.email) return res.status(401).json({ error: 'Invalid or expired token' });
+    if (!email) email = ht.email;
+    if (email.toLowerCase() !== ht.email.toLowerCase())
+      return res.status(403).json({ error: 'Cannot submit on behalf of another user' });
+    if (!githubUser && ht.githubUsername) githubUser = ht.githubUsername;
+    if (!firstName && ht.firstName) firstName = ht.firstName;
+    if (!lastName && ht.lastName) lastName = ht.lastName;
+    if (playableUrl) {
       try {
-        const ht = await fetchHackatimeProfile(accessToken);
-        if (ht) {
-          if (!email && ht.email) email = ht.email;
-          if (!githubUser && ht.githubUsername) githubUser = ht.githubUsername;
-          if (!firstName && ht.firstName) firstName = ht.firstName;
-          if (!lastName && ht.lastName) lastName = ht.lastName;
-        }
-        if (hackatimeProject) {
-          const htHours = await fetchHackatimeProjectHours(accessToken, hackatimeProject);
-          if (htHours > 0) hours = htHours;
-        }
-      } catch (err) {
-        console.warn('[submit-project] Hackatime auto-fill skipped:', err.message);
+        const parsed = new URL(playableUrl);
+        if (parsed.protocol !== 'https:') return res.status(400).json({ error: 'Playable URL must use HTTPS' });
+      } catch {
+        return res.status(400).json({ error: 'Invalid playable URL' });
       }
     }
-
-    if (!email) return res.status(400).json({ error: 'Email is required' });
+    if (hackatimeProject) {
+      try {
+        const htHours = await fetchHackatimeProjectHours(accessToken, hackatimeProject);
+        if (htHours > 0) hours = htHours;
+      } catch (err) {
+        console.warn('[submit-project] Hackatime hours fetch skipped:', err.message);
+      }
+    }
 
     const fields = {};
     const set = (key, val) => { if (val !== undefined && val !== null && val !== '') fields[FIELDS[key]] = val; };
@@ -1020,8 +1091,13 @@ app.post('/api/submit-project', async (req, res) => {
 app.post('/api/my-submissions', async (req, res) => {
   try {
     if (!AIRTABLE_PAT) return res.status(500).json({ error: 'Airtable not configured.' });
-    const { email } = req.body;
+    const { email, accessToken } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
+    if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
+    const htProfile = await fetchHackatimeProfile(accessToken).catch(() => null);
+    if (!htProfile?.email) return res.status(401).json({ error: 'Invalid or expired token' });
+    if (htProfile.email.toLowerCase() !== email.toLowerCase())
+      return res.status(403).json({ error: 'Cannot view another user\'s submissions' });
 
     const url = new URL(airtableUrl());
     url.searchParams.set('filterByFormula', `{Email}="${email.replace(/"/g, '\\"')}"`);
@@ -1040,10 +1116,26 @@ app.post('/api/my-submissions', async (req, res) => {
     } while (offset);
 
     const decisions = await loadReviewDecisions();
-    const submissions = records.map(rec => ({
-      recordId: rec.id,
-      description: rec.fields?.[FIELDS.description] || rec.fields?.Description || '',
-      reviewStatus: resolveReviewStatus(rec.fields, decisions[rec.id]),
+    const submissions = await Promise.all(records.map(async rec => {
+      // Comments live in the record's Comments Data field (or the local fallback
+      // file). Surface organizer feedback ([Feedback]-prefixed) to the submitter.
+      let comments = parseJsonField(rec.fields?.[COMMENTS_FIELD], null);
+      if (comments == null) comments = await loadSubmissionComments(rec.id);
+      const feedback = (Array.isArray(comments) ? comments : [])
+        .filter(c => typeof c?.text === 'string' && c.text.trim().startsWith('[Feedback]'))
+        .map(c => ({
+          text: c.text.replace(/^\s*\[Feedback\]\s*/, ''),
+          date: c.date || null,
+          author: c.author || 'Organizer',
+        }));
+      const hoursOverride = rec.fields?.[FIELDS.hours] ?? null;
+      return {
+        recordId: rec.id,
+        description: rec.fields?.[FIELDS.description] || rec.fields?.Description || '',
+        reviewStatus: resolveReviewStatus(rec.fields, decisions[rec.id]),
+        feedback,
+        ...(hoursOverride != null ? { hoursOverride: Number(hoursOverride) } : {}),
+      };
     }));
 
     return res.json({ success: true, submissions });
@@ -1059,19 +1151,17 @@ app.post('/api/my-submissions', async (req, res) => {
    The request must include the user's Hackatime accessToken; we verify it
    live and check the returned email against the whitelist.
    ───────────────────────────────────────────────────────────────────────── */
-async function checkAdmin(req, res) {
+async function checkAdmin(req, res, minTier = 1) {
   const token = req.body?.accessToken || req.headers['x-access-token'];
   if (!token) { res.status(401).json({ error: 'Not authenticated' }); return null; }
-  if (ADMIN_EMAILS.length === 0) { res.status(403).json({ error: 'No admin emails configured (set ADMIN_EMAILS in .env)' }); return null; }
   try {
     const profile = await fetchHackatimeProfile(token);
     const email = profile?.email?.toLowerCase();
     if (!email) { res.status(401).json({ error: 'Invalid or expired token' }); return null; }
-    if (!ADMIN_EMAILS.includes(email)) {
-      res.status(403).json({ error: 'Access denied — your email is not on the admin list' });
-      return null;
-    }
-    return profile.email;
+    const tier = await getAdminTier(email);
+    if (tier === 0) { res.status(403).json({ error: 'Access denied — your email is not on the admin list' }); return null; }
+    if (tier < minTier) { res.status(403).json({ error: `T${minTier} admin access required` }); return null; }
+    return { email: profile.email, tier };
   } catch (err) {
     res.status(500).json({ error: 'Failed to verify identity' });
     return null;
@@ -1080,8 +1170,8 @@ async function checkAdmin(req, res) {
 
 // Check if an email is an admin — used by the frontend to show/hide the page
 app.post('/api/admin/check', async (req, res) => {
-  const email = await checkAdmin(req, res);
-  if (email) res.json({ success: true, email });
+  const admin = await checkAdmin(req, res);
+  if (admin) res.json({ success: true, email: admin.email, tier: admin.tier });
 });
 
 app.post('/api/admin/list', async (req, res) => {
@@ -1113,18 +1203,91 @@ app.post('/api/admin/list', async (req, res) => {
   }
 });
 
+const ALLOWED_REVIEW_STATUSES = ['Under Review', 'Accepted', 'Rejected', 'Accepted - L1', 'Accepted - L2', 'Accepted - L3'];
+
 app.post('/api/admin/review', async (req, res) => {
-  if (!await checkAdmin(req, res)) return;
+  if (!await checkAdmin(req, res, 2)) return;
   try {
     if (!AIRTABLE_PAT) return res.status(500).json({ error: 'Airtable not configured on the server.' });
     const { recordId, status } = req.body;
     if (!recordId || !status) return res.status(400).json({ error: 'recordId and status are required' });
+    if (!ALLOWED_REVIEW_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status value' });
 
     const result = await persistReviewStatus(recordId, status);
     return res.json({ success: true, reviewStatus: status, storage: result.storage, record: result.record || null });
   } catch (err) {
     console.error('Admin review error:', err);
     return res.status(500).json({ error: err.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/admin/adjust', async (req, res) => {
+  if (!await checkAdmin(req, res, 2)) return;
+  try {
+    if (!AIRTABLE_PAT) return res.status(500).json({ error: 'Airtable not configured on the server.' });
+    const { recordId, hours, plays } = req.body;
+    if (!recordId) return res.status(400).json({ error: 'recordId required' });
+
+    const updates = {};
+
+    if (hours !== undefined && hours !== null) {
+      const r = await fetch(airtableUrl(recordId), {
+        method: 'PATCH',
+        headers: airtableHeaders(),
+        body: JSON.stringify({ fields: { [FIELDS.hours]: Number(hours) }, typecast: true }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error?.message || 'Failed to update hours');
+      updates.hours = Number(hours);
+    }
+
+    if (plays !== undefined && plays !== null) {
+      const allPlays = await loadPlays();
+      allPlays[recordId] = Number(plays);
+      await savePlays(allPlays);
+      updates.plays = Number(plays);
+    }
+
+    return res.json({ success: true, updates });
+  } catch (err) {
+    console.error('Admin adjust error:', err);
+    return res.status(500).json({ error: err.message || 'Internal Server Error' });
+  }
+});
+
+// Admin: set total plays override for a user (bypasses per-game counting)
+app.post('/api/admin/set-user-plays', async (req, res) => {
+  if (!await checkAdmin(req, res)) return;
+  const { email, plays } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  if (plays === undefined || plays === null) return res.status(400).json({ error: 'plays required' });
+  const data = await loadUserPlays();
+  data[email.toLowerCase()] = Number(plays);
+  await saveUserPlays(data);
+  return res.json({ success: true, plays: Number(plays) });
+});
+
+// User: fetch total plays — requires auth to prevent enumeration of override data
+app.post('/api/user/plays', async (req, res) => {
+  const { email, gameIds, accessToken } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
+  const profile = await fetchHackatimeProfile(accessToken).catch(() => null);
+  if (!profile?.email) return res.status(401).json({ error: 'Invalid or expired token' });
+  if (profile.email.toLowerCase() !== email.toLowerCase()) return res.status(403).json({ error: 'Unauthorized' });
+  try {
+    const overrides = await loadUserPlays();
+    const override = overrides[email.toLowerCase()];
+    if (override !== undefined) {
+      return res.json({ success: true, total: override, source: 'override' });
+    }
+    // Fall back to organic play counts
+    const allPlays = await loadPlays();
+    const ids = Array.isArray(gameIds) ? gameIds : [];
+    const total = ids.reduce((sum, id) => sum + (allPlays[id] || 0), 0);
+    return res.json({ success: true, total, source: 'organic' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -1142,11 +1305,14 @@ app.post('/api/admin/user-projects', async (req, res) => {
   }
 });
 
-// Public list of accepted / published games
-// Record one play for a game (no auth — called when user opens game in the arcade)
+// Record one play for a game — requires auth to prevent inflation attacks
 app.post('/api/play', async (req, res) => {
-  const { gameId } = req.body;
+  const { gameId, accessToken } = req.body;
   if (!gameId) return res.status(400).json({ error: 'gameId required' });
+  if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
+  if (!/^rec[A-Za-z0-9]{10,20}$/.test(gameId)) return res.status(400).json({ error: 'Invalid gameId' });
+  const profile = await fetchHackatimeProfile(accessToken).catch(() => null);
+  if (!profile?.email) return res.status(401).json({ error: 'Invalid or expired token' });
   try {
     const plays = await loadPlays();
     plays[gameId] = (plays[gameId] || 0) + 1;
@@ -1183,11 +1349,21 @@ app.get('/api/comments', async (req, res) => {
 
 // Post a comment on a game
 app.post('/api/comments', async (req, res) => {
-  const { gameId, author, text } = req.body;
+  const { gameId, text, accessToken } = req.body;
   if (!gameId || !text?.trim()) return res.status(400).json({ error: 'gameId and text required' });
+  if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
+  const htProfile = await fetchHackatimeProfile(accessToken).catch(() => null);
+  if (!htProfile?.email) return res.status(401).json({ error: 'Invalid or expired token' });
+  // Only verified admins may post [Feedback]-prefixed comments
+  if (text.trim().startsWith('[Feedback]')) {
+    const tier = await getAdminTier(htProfile.email.toLowerCase());
+    if (tier === 0) return res.status(403).json({ error: 'Only admins can post feedback' });
+  }
+  // Always derive display name from the verified profile — never trust client-supplied author
+  const displayName = htProfile.username || htProfile.displayName || htProfile.githubUsername || 'Arcade Player';
   try {
     const comment = {
-      author: (author || 'Anonymous').trim(),
+      author: displayName,
       text: text.trim(),
       date: new Date().toISOString(),
     };
@@ -1289,38 +1465,6 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// Diagnostic: returns the actual field names in the submissions table
-// Visit http://localhost:3001/api/admin/fields in your browser to see them
-app.get('/api/admin/fields', async (req, res) => {
-  try {
-    // Try Metadata API first (needs schema.bases:read scope)
-    const meta = await fetch(
-      `https://api.airtable.com/v0/meta/bases/${AIRTABLE_BASE_ID}/tables`,
-      { headers: { Authorization: `Bearer ${AIRTABLE_PAT}` } }
-    );
-    if (meta.ok) {
-      const data = await meta.json();
-      const table = data.tables?.find(t => t.id === AIRTABLE_TABLE || t.name === AIRTABLE_TABLE);
-      const fields = table?.fields?.map(f => `"${f.name}" (${f.type})`) || [];
-      return res.json({ source: 'metadata', tableName: table?.name, fields });
-    }
-
-    // Fallback: read one record and extract field names from it
-    const url = new URL(airtableUrl());
-    url.searchParams.set('maxRecords', '1');
-    const r = await fetch(url, { headers: airtableHeaders() });
-    const data = await r.json().catch(() => null);
-    if (!r.ok) return res.status(r.status).json({ error: data?.error || 'Airtable error' });
-
-    const record = data.records?.[0];
-    if (!record) return res.json({ source: 'records', note: 'Table is empty — create a record manually in Airtable first', fields: [] });
-
-    const fields = Object.keys(record.fields).map(k => `"${k}"`);
-    return res.json({ source: 'records', fields, currentMapping: FIELDS });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
 
 /* ─────────────────────────────────────────────────────────────────────────
    USER PROJECT DATA  — load & save per-user projects to Airtable
@@ -1330,8 +1474,13 @@ app.get('/api/admin/fields', async (req, res) => {
 app.post('/api/user/projects/load', async (req, res) => {
   try {
     if (!AIRTABLE_PAT) return res.status(500).json({ error: 'Airtable not configured' });
-    const { email } = req.body;
+    const { email, accessToken } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
+    if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
+    const htProfile = await fetchHackatimeProfile(accessToken).catch(() => null);
+    if (!htProfile?.email) return res.status(401).json({ error: 'Invalid or expired token' });
+    if (htProfile.email.toLowerCase() !== email.toLowerCase())
+      return res.status(403).json({ error: 'Cannot load another user\'s data' });
     const { projects, recordId } = await loadUserProjectsByEmail(email);
     return res.json({ success: true, projects, recordId });
   } catch (err) {
@@ -1343,8 +1492,13 @@ app.post('/api/user/projects/load', async (req, res) => {
 app.post('/api/user/projects/save', async (req, res) => {
   try {
     if (!AIRTABLE_PAT) return res.status(500).json({ error: 'Airtable not configured' });
-    const { email, projects, recordId } = req.body;
+    const { email, projects, recordId, accessToken } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
+    if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
+    const htProfile = await fetchHackatimeProfile(accessToken).catch(() => null);
+    if (!htProfile?.email) return res.status(401).json({ error: 'Invalid or expired token' });
+    if (htProfile.email.toLowerCase() !== email.toLowerCase())
+      return res.status(403).json({ error: 'Cannot modify another user\'s data' });
 
     // Strip base64 data URIs from headerImage — plain URLs are fine to store
     const sanitised = (projects || []).map(p => ({
@@ -1353,17 +1507,39 @@ app.post('/api/user/projects/save', async (req, res) => {
     }));
     const fields = { 'Email': email, 'Projects Data': JSON.stringify(sanitised) };
 
-    const r = recordId
-      ? await fetch(userTableUrl(recordId), { method: 'PATCH', headers: airtableHeaders(), body: JSON.stringify({ fields }) })
-      : await fetch(userTableUrl(),          { method: 'POST',  headers: airtableHeaders(), body: JSON.stringify({ fields }) });
+    // Always resolve the record ID server-side — never trust the client-supplied value
+    const { recordId: resolvedRecordId } = await loadUserProjectsByEmail(email);
+    const r = resolvedRecordId
+      ? await fetch(userTableUrl(resolvedRecordId), { method: 'PATCH', headers: airtableHeaders(), body: JSON.stringify({ fields }) })
+      : await fetch(userTableUrl(),                 { method: 'POST',  headers: airtableHeaders(), body: JSON.stringify({ fields }) });
 
     const data = await r.json().catch(() => null);
     if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Airtable error' });
 
-    // Mirror journal entries onto linked submission records so admin/arcade see fresh logs
+    // Mirror journal entries onto linked submission records so admin/arcade see fresh logs.
+    // First, fetch the authenticated user's own submission record IDs to prevent IDOR.
+    let ownedSubmissionIds = new Set();
+    if (AIRTABLE_PAT) {
+      try {
+        const submUrl = new URL(airtableUrl());
+        submUrl.searchParams.set('filterByFormula', `{Email}="${email.replace(/"/g, '\\"')}"`);
+        submUrl.searchParams.set('fields[]', 'Email');
+        submUrl.searchParams.set('pageSize', '100');
+        let offset;
+        do {
+          const pageUrl = new URL(submUrl);
+          if (offset) pageUrl.searchParams.set('offset', offset);
+          const r = await fetch(pageUrl, { headers: airtableHeaders() });
+          const data = await r.json().catch(() => null);
+          if (r.ok) (data.records || []).forEach(rec => ownedSubmissionIds.add(rec.id));
+          offset = r.ok ? data.offset : null;
+        } while (offset);
+      } catch {}
+    }
     await Promise.all(
       sanitised
-        .filter(p => p.airtableRecordId && (Array.isArray(p.journalEntries) || Array.isArray(p.tags)))
+        .filter(p => p.airtableRecordId && ownedSubmissionIds.has(p.airtableRecordId)
+                  && (Array.isArray(p.journalEntries) || Array.isArray(p.tags)))
         .map(p => syncJournalToSubmission(p.airtableRecordId, p.journalEntries, p.tags))
     );
 
@@ -1390,19 +1566,35 @@ app.get('/api/shop/items', async (req, res) => {
 
 app.post('/api/shop/order', async (req, res) => {
   try {
-    const { email, itemId, totalHours, totalPlays } = req.body;
+    const { email, itemId, accessToken } = req.body;
     if (!email || !itemId) return res.status(400).json({ error: 'email and itemId required' });
+    if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
+
+    const htProfile = await fetchHackatimeProfile(accessToken).catch(() => null);
+    if (!htProfile?.email) return res.status(401).json({ error: 'Invalid or expired token' });
+    if (htProfile.email.toLowerCase() !== email.toLowerCase())
+      return res.status(403).json({ error: 'Cannot place order for another user' });
 
     const items = await loadShopItems();
     const item = items.find(i => i.id === itemId && i.active !== false);
     if (!item) return res.status(404).json({ error: 'Item not found' });
 
-    const hours = Number(totalHours) || 0;
-    const plays = Number(totalPlays) || 0;
-    const coins = Math.floor(hours * COINS_PER_HOUR);
+    // Prevent duplicate orders for the same item
+    const existingOrders = await loadShopOrders();
+    const alreadyOrdered = existingOrders.some(
+      o => o.email?.toLowerCase() === email.toLowerCase() && o.itemId === itemId && o.status !== 'cancelled'
+    );
+    if (alreadyOrdered) return res.status(409).json({ error: 'You already have an active order for this item' });
 
-    if (plays < item.minPlayers) {
-      return res.status(400).json({ error: `Requires ${item.minPlayers} players (you have ${plays})` });
+    // Always compute hours and plays server-side — never trust client-supplied values
+    const [totalHours, totalPlays] = await Promise.all([
+      fetchHackatimeTotalHours(accessToken),
+      getUserTotalPlaysServerSide(email),
+    ]);
+    const coins = Math.floor(totalHours * COINS_PER_HOUR);
+
+    if (totalPlays < item.minPlayers) {
+      return res.status(400).json({ error: `Requires ${item.minPlayers} players (you have ${totalPlays})` });
     }
     if (coins < item.coins) {
       return res.status(400).json({ error: `Requires ${item.coins} coins (you have ${coins})` });
@@ -1415,8 +1607,8 @@ app.post('/api/shop/order', async (req, res) => {
       coins: item.coins,
       minPlayers: item.minPlayers,
       email,
-      totalHours: hours,
-      totalPlays: plays,
+      totalHours,
+      totalPlays,
       status: 'pending',
       orderedAt: new Date().toISOString(),
     };
@@ -1428,7 +1620,7 @@ app.post('/api/shop/order', async (req, res) => {
 });
 
 app.post('/api/admin/shop/items', async (req, res) => {
-  if (!await checkAdmin(req, res)) return;
+  if (!await checkAdmin(req, res, 2)) return;
   try {
     const items = await loadShopItems();
     return res.json({ success: true, items });
@@ -1438,7 +1630,7 @@ app.post('/api/admin/shop/items', async (req, res) => {
 });
 
 app.post('/api/admin/shop/items/save', async (req, res) => {
-  if (!await checkAdmin(req, res)) return;
+  if (!await checkAdmin(req, res, 2)) return;
   try {
     const { item } = req.body;
     if (!item?.title?.trim()) return res.status(400).json({ error: 'title is required' });
@@ -1461,7 +1653,7 @@ app.post('/api/admin/shop/items/save', async (req, res) => {
 });
 
 app.post('/api/admin/shop/items/delete', async (req, res) => {
-  if (!await checkAdmin(req, res)) return;
+  if (!await checkAdmin(req, res, 2)) return;
   try {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id required' });
@@ -1473,7 +1665,7 @@ app.post('/api/admin/shop/items/delete', async (req, res) => {
 });
 
 app.post('/api/admin/shop/orders', async (req, res) => {
-  if (!await checkAdmin(req, res)) return;
+  if (!await checkAdmin(req, res, 2)) return;
   try {
     const orders = await loadShopOrders();
     return res.json({ success: true, orders });
@@ -1482,17 +1674,71 @@ app.post('/api/admin/shop/orders', async (req, res) => {
   }
 });
 
+const VALID_ORDER_STATUSES = ['pending', 'fulfilled', 'cancelled'];
+const TERMINAL_ORDER_STATUSES = ['fulfilled', 'cancelled'];
+
 app.post('/api/admin/shop/orders/update', async (req, res) => {
-  if (!await checkAdmin(req, res)) return;
+  if (!await checkAdmin(req, res, 2)) return;
   try {
     const { id, status } = req.body;
     if (!id || !status) return res.status(400).json({ error: 'id and status required' });
+    if (!VALID_ORDER_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status value' });
+    const orders = await loadShopOrders();
+    const current = orders.find(o => o.id === id);
+    if (!current) return res.status(404).json({ error: 'Order not found' });
+    if (TERMINAL_ORDER_STATUSES.includes(current.status))
+      return res.status(409).json({ error: 'Cannot modify a completed or cancelled order' });
     const result = await updateShopOrderStatus(id, status);
     return res.json({ success: true, order: result.order });
   } catch (err) {
     if (err.message === 'Order not found') return res.status(404).json({ error: err.message });
     return res.status(500).json({ error: err.message });
   }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ADMIN MANAGEMENT  (T2 only)
+   ───────────────────────────────────────────────────────────────────────── */
+app.post('/api/admin/admins/list', async (req, res) => {
+  if (!await checkAdmin(req, res, 2)) return;
+  const list = await loadAdminList();
+  return res.json({
+    success: true,
+    t1: [...new Set([...ADMIN_T1_EMAILS, ...list.t1])],
+    t2: [...new Set([...ADMIN_T2_EMAILS, ...list.t2])],
+    envT1: ADMIN_T1_EMAILS,
+    envT2: ADMIN_T2_EMAILS,
+  });
+});
+
+app.post('/api/admin/admins/add', async (req, res) => {
+  if (!await checkAdmin(req, res, 2)) return;
+  const { email, tier } = req.body;
+  if (!email || ![1, 2].includes(Number(tier))) return res.status(400).json({ error: 'email and tier (1 or 2) required' });
+  const list = await loadAdminList();
+  const lower = email.trim().toLowerCase();
+  // Remove from both lists first, then add to correct tier
+  list.t1 = list.t1.filter(e => e.toLowerCase() !== lower);
+  list.t2 = list.t2.filter(e => e.toLowerCase() !== lower);
+  if (Number(tier) === 2) list.t2.push(lower);
+  else list.t1.push(lower);
+  await saveAdminList(list);
+  return res.json({ success: true, t1: list.t1, t2: list.t2 });
+});
+
+app.post('/api/admin/admins/remove', async (req, res) => {
+  if (!await checkAdmin(req, res, 2)) return;
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  const lower = email.trim().toLowerCase();
+  if (ADMIN_T1_EMAILS.includes(lower) || ADMIN_T2_EMAILS.includes(lower)) {
+    return res.status(400).json({ error: 'Cannot remove env-configured admins — update ADMIN_EMAILS or ADMIN_T1_EMAILS in .env' });
+  }
+  const list = await loadAdminList();
+  list.t1 = list.t1.filter(e => e.toLowerCase() !== lower);
+  list.t2 = list.t2.filter(e => e.toLowerCase() !== lower);
+  await saveAdminList(list);
+  return res.json({ success: true, t1: list.t1, t2: list.t2 });
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
