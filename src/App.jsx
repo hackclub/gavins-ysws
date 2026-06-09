@@ -2112,8 +2112,11 @@ import {
       const [playsReady,  setPlaysReady]  = useState(false);
       const [shopItems,   setShopItems]   = useState([]);
       const [itemsReady,  setItemsReady]  = useState(false);
-      const [orderingId,  setOrderingId]  = useState(null);
-      const [orderMsg,    setOrderMsg]    = useState(null);
+      const [orderingId,   setOrderingId]   = useState(null);
+      const [orderMsg,     setOrderMsg]     = useState(null);
+      const [addressItem,  setAddressItem]  = useState(null);
+      const [addressInput, setAddressInput] = useState('');
+      const [addressErr,   setAddressErr]   = useState(null);
       const totalCoins = Math.floor((totalHours || 0) * COINS_PER_HOUR);
 
       // IDs of submitted (accepted) games this user has
@@ -2146,15 +2149,23 @@ import {
       const nextTier   = displayTiers.find(t => totalPlays < t.min);
       const maxPlays   = nextTier ? nextTier.min : SHOP_TIERS_DEF[SHOP_TIERS_DEF.length - 1].min;
 
-      const handleOrder = async (item) => {
+      const handleOrder = (item) => {
         if (!user?.email) { setOrderMsg('Sign in to place an order.'); return; }
-        setOrderingId(item.id);
-        setOrderMsg(null);
+        setAddressItem(item);
+        setAddressInput('');
+        setAddressErr(null);
+      };
+
+      const handleConfirmOrder = async () => {
+        if (!addressInput.trim()) { setAddressErr('Please enter a shipping address.'); return; }
+        setOrderingId(addressItem.id);
+        setAddressErr(null);
         try {
-          await placeShopOrder(user.email, item.id, user?.token);
-          setOrderMsg(`Ordered: ${item.title}`);
+          await placeShopOrder(user.email, addressItem.id, user?.token, addressInput.trim());
+          setOrderMsg(`Ordered: ${addressItem.title}`);
+          setAddressItem(null);
         } catch (err) {
-          setOrderMsg(err.message || 'Order failed');
+          setAddressErr(err.message || 'Order failed');
         } finally { setOrderingId(null); }
       };
 
@@ -2320,6 +2331,62 @@ import {
               );
             })}
           </div>
+
+          {/* ── Address modal ── */}
+          {addressItem && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 100,
+            }}>
+              <div style={{
+                background: CARD, border: `1px solid ${AMBER}55`,
+                padding: '32px', maxWidth: '420px', width: '90%', borderRadius: '4px',
+              }}>
+                <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '10px', color: AMBER, marginBottom: '6px', lineHeight: 1.7 }}>
+                  {addressItem.title}
+                </h2>
+                <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: MUTED, marginBottom: '24px' }}>
+                  ¢{addressItem.coins} coins · Where should we ship it?
+                </p>
+                <label style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: CREAM, display: 'block', marginBottom: '6px' }}>
+                  Shipping Address
+                </label>
+                <textarea
+                  autoFocus
+                  value={addressInput}
+                  onChange={e => setAddressInput(e.target.value)}
+                  placeholder={'123 Main St\nCity, State ZIP\nCountry'}
+                  rows={4}
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    background: '#0f0820', border: `1px solid ${MUTED}`,
+                    color: CREAM, fontFamily: "'IBM Plex Mono'", fontSize: '13px',
+                    padding: '10px 12px', resize: 'vertical', outline: 'none',
+                  }}
+                />
+                {addressErr && (
+                  <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: CORAL, marginTop: '8px' }}>{addressErr}</p>
+                )}
+                <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+                  <ArcadeBtn
+                    bg={GREEN} dark={GREEND}
+                    style={{ flex: 1, fontSize: '10px', opacity: orderingId === addressItem.id ? 0.6 : 1 }}
+                    onClick={handleConfirmOrder}
+                  >
+                    {orderingId === addressItem.id ? '…' : 'Confirm Order'}
+                  </ArcadeBtn>
+                  <ArcadeBtn
+                    bg={CORAL} dark={CORALD}
+                    style={{ fontSize: '10px' }}
+                    onClick={() => setAddressItem(null)}
+                  >
+                    Cancel
+                  </ArcadeBtn>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -2344,7 +2411,7 @@ import {
         num: '01',
         color: AMBER,
         title: 'Complete Game Loop',
-        icon: '🎮',
+        icon: '',
         desc: 'Your game must have a clear beginning, middle, and end. The player should be able to start, play, win or lose, and return to the start — all without leaving the game.',
         chips: ['Start state', 'Win / lose condition', 'Return to menu'],
       },
@@ -2352,7 +2419,7 @@ import {
         num: '02',
         color: GREEN,
         title: 'Main Menu',
-        icon: '📋',
+        icon: '',
         desc: 'Include a main menu screen that greets the player before the game begins. At minimum it should show your game title and a way to start playing.',
         chips: ['Title screen', 'Start button', 'Optional: settings / credits'],
       },
@@ -2360,7 +2427,7 @@ import {
         num: '03',
         color: PURPLE,
         title: 'Replayability',
-        icon: '🔁',
+        icon: '',
         desc: 'Players should want — and be able — to play again. This can mean randomised levels, score chasing, unlockables, or simply a "Play Again" button after the game ends.',
         chips: ['Play again flow', 'Score / progress', 'Varied experience'],
       },
@@ -2368,7 +2435,7 @@ import {
         num: '04',
         color: CORAL,
         title: 'Submit to itch.io',
-        icon: '🚀',
+        icon: '',
         desc: 'Export your finished game and upload it to itch.io as a public project. Paste the itch.io link into the Projects page here to complete your submission.',
         chips: ['Export build', 'Publish on itch.io', 'Submit link here'],
       },
