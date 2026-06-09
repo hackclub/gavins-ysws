@@ -3248,6 +3248,16 @@ import {
       const [feedback,    setFeedback]    = useState('');
       const [postingFb,   setPostingFb]   = useState(false);
 
+      // Internal reviewer-only notes about this project (never shown to the submitter)
+      const [projectNotes,       setProjectNotes]       = useState([]);
+      const [projectNoteInput,   setProjectNoteInput]   = useState('');
+      const [postingProjectNote, setPostingProjectNote] = useState(false);
+
+      // Internal reviewer-only notes about the creator, shared across all their projects
+      const [submitterNotes,       setSubmitterNotes]       = useState([]);
+      const [submitterNoteInput,   setSubmitterNoteInput]   = useState('');
+      const [postingSubmitterNote, setPostingSubmitterNote] = useState(false);
+
       const v = record.fields || {};
       const f = fields || {};
       const email = v[f.email] || v['Email'] || '';
@@ -3302,12 +3312,13 @@ import {
 
       useEffect(() => { loadLogs(); }, [loadLogs]);
 
-      // Load internal admin notes (per-project + per-submitter).
+      // Load this project's internal reviewer notes.
       useEffect(() => {
         if (!token) return;
         adminNotes(token, record.id).then(d => setProjectNotes(d.notes || [])).catch(() => {});
       }, [token, record.id]);
 
+      // Load reviewer notes about the creator (shared across all their projects).
       useEffect(() => {
         if (!token || !email) return;
         adminSubmitterNotes(token, email).then(d => setSubmitterNotes(d.notes || [])).catch(() => {});
@@ -3528,6 +3539,30 @@ import {
                   {postingFb ? '…' : 'Send Feedback'}
                 </ArcadeBtn>
               </div>
+
+              <AdminNotePanel
+                title="REVIEWER NOTES"
+                subtitle="Internal — only reviewers can see these. Not shown to the submitter."
+                notes={projectNotes}
+                value={projectNoteInput}
+                onChange={setProjectNoteInput}
+                onPost={postProjectNote}
+                posting={postingProjectNote}
+                placeholder="Private notes about this project…"
+                accent={AMBER}
+              />
+
+              <AdminNotePanel
+                title="USER NOTES"
+                subtitle={`Internal — about ${submitter || 'this creator'}. Shown on every project they submit.`}
+                notes={submitterNotes}
+                value={submitterNoteInput}
+                onChange={setSubmitterNoteInput}
+                onPost={postSubmitterNote}
+                posting={postingSubmitterNote}
+                placeholder="Private notes about this creator…"
+                accent={GREEN}
+              />
             </div>
           </div>
 

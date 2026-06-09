@@ -1827,6 +1827,30 @@ app.post('/api/admin/shop/orders/update', async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
+   Image uploads (journal screenshots) — stored on disk, served by URL.
+   Served under /api/* so the dev Vite proxy forwards it to this server.
+   ───────────────────────────────────────────────────────────────────────── */
+app.use('/api/uploads', express.static(UPLOADS_DIR, { maxAge: '7d', immutable: true }));
+
+app.post('/api/upload', async (req, res) => {
+  try {
+    const { dataUrl } = req.body || {};
+    if (typeof dataUrl !== 'string') return res.status(400).json({ error: 'dataUrl is required' });
+    const m = dataUrl.match(/^data:image\/(png|jpe?g|gif|webp);base64,(.+)$/);
+    if (!m) return res.status(400).json({ error: 'Unsupported or invalid image data' });
+    const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > 6 * 1024 * 1024) return res.status(413).json({ error: 'Image too large (max 6MB)' });
+    const name = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
+    await fs.writeFile(path.join(UPLOADS_DIR, name), buf);
+    return res.json({ success: true, url: `/api/uploads/${name}` });
+  } catch (err) {
+    console.error('Upload error:', err);
+    return res.status(500).json({ error: 'Upload failed' });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
    In production, serve the built frontend from /dist
    ───────────────────────────────────────────────────────────────────────── */
 app.use(express.static(path.join(__dirname, 'dist')));
