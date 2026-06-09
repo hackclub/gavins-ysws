@@ -399,6 +399,7 @@ import {
             {NAV.map(item => {
               const active = page === item.id;
               const locked = !user && PROTECTED.includes(item.id);
+              const accent = item.id === 'admin' ? CORAL : AMBER;
               return (
                 <div
                   key={item.id}
@@ -413,9 +414,11 @@ import {
                     gap: '10px',
                     cursor: 'pointer',
                     borderRadius: '4px',
-                    outline: active ? `2px solid ${AMBER}` : '2px solid transparent',
+                    outline: active ? `2px solid ${accent}` : '2px solid transparent',
                     outlineOffset: '2px',
-                    background: active ? 'rgba(245,197,66,0.08)' : 'transparent',
+                    background: active
+                      ? (item.id === 'admin' ? 'rgba(224,92,42,0.10)' : 'rgba(245,197,66,0.08)')
+                      : 'transparent',
                     position: 'relative',
                     overflow: 'hidden',
                   }}
@@ -423,7 +426,7 @@ import {
                   <span style={{
                     fontFamily: "'IBM Plex Mono', monospace",
                     fontSize: '15px',
-                    color: active ? AMBER : CREAM,
+                    color: item.id === 'admin' ? CORAL : (active ? AMBER : CREAM),
                     letterSpacing: '0.04em',
                   }}>
                     {item.label}
@@ -3312,6 +3315,16 @@ import {
       const [feedback,    setFeedback]    = useState('');
       const [postingFb,   setPostingFb]   = useState(false);
 
+      // Internal reviewer-only notes about this project (never shown to the submitter)
+      const [projectNotes,       setProjectNotes]       = useState([]);
+      const [projectNoteInput,   setProjectNoteInput]   = useState('');
+      const [postingProjectNote, setPostingProjectNote] = useState(false);
+
+      // Internal reviewer-only notes about the creator, shared across all their projects
+      const [submitterNotes,       setSubmitterNotes]       = useState([]);
+      const [submitterNoteInput,   setSubmitterNoteInput]   = useState('');
+      const [postingSubmitterNote, setPostingSubmitterNote] = useState(false);
+
       const v = record.fields || {};
       const f = fields || {};
       const email = v[f.email] || v['Email'] || '';
@@ -3366,12 +3379,13 @@ import {
 
       useEffect(() => { loadLogs(); }, [loadLogs]);
 
-      // Load internal admin notes (per-project + per-submitter).
+      // Load this project's internal reviewer notes.
       useEffect(() => {
         if (!token) return;
         adminNotes(token, record.id).then(d => setProjectNotes(d.notes || [])).catch(() => {});
       }, [token, record.id]);
 
+      // Load reviewer notes about the creator (shared across all their projects).
       useEffect(() => {
         if (!token || !email) return;
         adminSubmitterNotes(token, email).then(d => setSubmitterNotes(d.notes || [])).catch(() => {});
@@ -3592,6 +3606,30 @@ import {
                   {postingFb ? '…' : 'Send Feedback'}
                 </ArcadeBtn>
               </div>
+
+              <AdminNotePanel
+                title="REVIEWER NOTES"
+                subtitle="Internal — only reviewers can see these. Not shown to the submitter."
+                notes={projectNotes}
+                value={projectNoteInput}
+                onChange={setProjectNoteInput}
+                onPost={postProjectNote}
+                posting={postingProjectNote}
+                placeholder="Private notes about this project…"
+                accent={AMBER}
+              />
+
+              <AdminNotePanel
+                title="USER NOTES"
+                subtitle={`Internal — about ${submitter || 'this creator'}. Shown on every project they submit.`}
+                notes={submitterNotes}
+                value={submitterNoteInput}
+                onChange={setSubmitterNoteInput}
+                onPost={postSubmitterNote}
+                posting={postingSubmitterNote}
+                placeholder="Private notes about this creator…"
+                accent={GREEN}
+              />
             </div>
           </div>
 
