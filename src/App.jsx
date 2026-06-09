@@ -399,6 +399,7 @@ import {
             {NAV.map(item => {
               const active = page === item.id;
               const locked = !user && PROTECTED.includes(item.id);
+              const accent = item.id === 'admin' ? CORAL : AMBER;
               return (
                 <div
                   key={item.id}
@@ -413,9 +414,11 @@ import {
                     gap: '10px',
                     cursor: 'pointer',
                     borderRadius: '4px',
-                    outline: active ? `2px solid ${AMBER}` : '2px solid transparent',
+                    outline: active ? `2px solid ${accent}` : '2px solid transparent',
                     outlineOffset: '2px',
-                    background: active ? 'rgba(245,197,66,0.08)' : 'transparent',
+                    background: active
+                      ? (item.id === 'admin' ? 'rgba(224,92,42,0.10)' : 'rgba(245,197,66,0.08)')
+                      : 'transparent',
                     position: 'relative',
                     overflow: 'hidden',
                   }}
@@ -423,7 +426,7 @@ import {
                   <span style={{
                     fontFamily: "'IBM Plex Mono', monospace",
                     fontSize: '15px',
-                    color: active ? AMBER : CREAM,
+                    color: item.id === 'admin' ? CORAL : (active ? AMBER : CREAM),
                     letterSpacing: '0.04em',
                   }}>
                     {item.label}
