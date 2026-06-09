@@ -102,6 +102,10 @@ export function adminUserProjects(accessToken, email) {
   return postJSON('/api/admin/user-projects', { accessToken, email });
 }
 
+export function adminAllUsers(accessToken) {
+  return postJSON('/api/admin/all-users', { accessToken });
+}
+
 // Internal admin notes on a single submission (admin-only)
 export function adminNotes(accessToken, recordId) {
   return postJSON('/api/admin/notes', { accessToken, recordId });

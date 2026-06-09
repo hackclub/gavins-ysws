@@ -12,6 +12,7 @@ import {
   getShopItems, placeShopOrder,
   adminShopItems, adminShopItemSave, adminShopItemDelete,
   adminShopOrders, adminShopOrderUpdate,
+  adminAllUsers,
 } from './api.js';
 
     function projectsStorageKey(email) {
@@ -1032,7 +1033,7 @@ import {
     }
 
     /* ─── Projects Page ───────────────────────────────────────────────────── */
-    function ProjectsPage({ projects, totalHours, pendingHours, onCreate, onView, onSetHours, onAddEntry, onSetTags, currentProject, onOpenCreateModal, onSubmitToJam, userToken, user }) {
+    function ProjectsPage({ projects, totalHours, pendingHours, onCreate, onView, onSetHours, onAddEntry, onSetTags, onEditProject, currentProject, onOpenCreateModal, onSubmitToJam, userToken, user }) {
       const pct = Math.min((totalHours / 30) * 100, 100);
       const qualified = totalHours >= 30;
       const activeProjects  = projects.filter(p => p.submissionStatus !== 'under-review' && p.submissionStatus !== 'accepted');
@@ -1050,6 +1051,26 @@ import {
 
       // Comments open state per accepted project
       const [commentsOpen, setCommentsOpen] = useState({});
+
+      // Edit project modal
+      const [editTarget,   setEditTarget]   = useState(null); // project being edited
+      const [editTags,     setEditTags]     = useState([]);
+      const [editHt,       setEditHt]       = useState('');
+      const [htProjects,   setHtProjects]   = useState([]);
+
+      const openEdit = (p) => {
+        setEditTarget(p);
+        setEditTags(p.tags || []);
+        setEditHt(p.hackatimeProject || '');
+        if (user?.token) {
+          getHackatimeProjects(user.token).then(d => setHtProjects(d.projects || [])).catch(() => {});
+        }
+      };
+      const saveEdit = () => {
+        if (!editTarget) return;
+        onEditProject(editTarget.id, { tags: editTags, hackatimeProject: editHt });
+        setEditTarget(null);
+      };
 
       const proj = currentProject ? projects.find(p => p.id === currentProject) : null;
       if (proj) {
@@ -1183,12 +1204,69 @@ import {
                         ))}
                       </div>
                     )}
-                    <ArcadeBtn bg={AMBER} style={{ width: '100%', fontSize: '12px' }} onClick={() => onView(p.id)}>
-                      VIEW ›
-                    </ArcadeBtn>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <ArcadeBtn bg={AMBER} style={{ flex: 1, fontSize: '12px' }} onClick={() => onView(p.id)}>
+                        VIEW ›
+                      </ArcadeBtn>
+                      <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '12px' }} onClick={() => openEdit(p)}>
+                        Edit
+                      </ArcadeBtn>
+                    </div>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── Edit Project Modal ── */}
+          {editTarget && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+            }} onClick={() => setEditTarget(null)}>
+              <div style={{
+                background: CARD, border: `1px solid ${PURPLE}`,
+                padding: '32px', maxWidth: '480px', width: '90%',
+              }} onClick={e => e.stopPropagation()}>
+                <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color: AMBER, marginBottom: '24px', lineHeight: 1.7 }}>
+                  Edit: {editTarget.name}
+                </h2>
+
+                <label style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: CREAM, display: 'block', marginBottom: '6px' }}>
+                  Hackatime Project
+                </label>
+                <select
+                  value={editHt}
+                  onChange={e => setEditHt(e.target.value)}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', marginBottom: '20px',
+                    background: '#0f0820', border: `1px solid ${MUTED}`, color: CREAM,
+                    fontFamily: "'IBM Plex Mono'", fontSize: '13px', padding: '10px 12px',
+                  }}
+                >
+                  <option value="">— none —</option>
+                  {htProjects.map(p => (
+                    <option key={p.key || p.name} value={p.key || p.name}>{p.name || p.key}</option>
+                  ))}
+                  {editHt && !htProjects.find(p => (p.key || p.name) === editHt) && (
+                    <option value={editHt}>{editHt}</option>
+                  )}
+                </select>
+
+                <label style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: CREAM, display: 'block', marginBottom: '6px' }}>
+                  Tags
+                </label>
+                <TagPicker tags={editTags} setTags={setEditTags} />
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+                  <ArcadeBtn bg={GREEN} dark={GREEND} style={{ flex: 1, fontSize: '11px' }} onClick={saveEdit}>
+                    Save
+                  </ArcadeBtn>
+                  <ArcadeBtn bg={CORAL} dark={CORALD} style={{ fontSize: '11px' }} onClick={() => setEditTarget(null)}>
+                    Cancel
+                  </ArcadeBtn>
+                </div>
+              </div>
             </div>
           )}
 
@@ -3876,7 +3954,7 @@ import {
       );
     }
 
-    const EMPTY_SHOP_ITEM = { title: '', desc: '', coins: 0, minPlayers: 0, image: '', active: true };
+    const EMPTY_SHOP_ITEM = { title: '', desc: '', coins: 0, minPlayers: 0, image: '', shopLink: '', active: true };
     // 20 coins/hr × $5/hr wage → $1 = 4 coins
     const COINS_PER_DOLLAR = 4;
 
@@ -3969,6 +4047,12 @@ import {
                     <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: CREAM, lineHeight: 1.7 }}>
                       {o.email}<br />
                       ¢ {o.coins} · {o.totalPlays} players · {o.totalHours}h<br />
+                      {o.address && <><span style={{ color: MUTED }}>Ship to:</span> {o.address}<br /></>}
+                      {o.phone && <><span style={{ color: MUTED }}>Phone:</span> {o.phone}<br /></>}
+                      {o.shopLink && (
+                        <><span style={{ color: MUTED }}>Buy from:</span>{' '}
+                        <a href={o.shopLink} target="_blank" rel="noopener noreferrer" style={{ color: AMBER }}>{o.shopLink}</a><br /></>
+                      )}
                       {new Date(o.orderedAt).toLocaleString()}
                     </div>
                   </div>
@@ -4039,6 +4123,10 @@ import {
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>Image path (e.g. /shop-steam-giftcard.png)</label>
                 <input value={form.image} onChange={e => setForm(f => ({ ...f, image: e.target.value }))} style={fieldStyle} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Shop / Purchase Link (shown to admins on orders)</label>
+                <input type="url" value={form.shopLink || ''} onChange={e => setForm(f => ({ ...f, shopLink: e.target.value }))} placeholder="https://..." style={fieldStyle} />
               </div>
               <label style={{ gridColumn: '1 / -1', fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: CREAM, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input type="checkbox" checked={form.active !== false} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
@@ -4408,7 +4496,7 @@ import {
 
           {userList.length === 0 && (
             <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, fontStyle: 'italic' }}>
-              {search ? 'No users match.' : 'No submissions yet.'}
+              {search ? 'No users match.' : 'No users yet.'}
             </p>
           )}
 
@@ -4446,14 +4534,25 @@ import {
     function AdminUsersTab({ records, fields, token }) {
       const [search,        setSearch]        = useState('');
       const [selectedEmail, setSelectedEmail] = useState(null);
+      const [allEmails,     setAllEmails]     = useState([]);
 
       const f = fields || {};
+
+      useEffect(() => {
+        adminAllUsers(token)
+          .then(d => setAllEmails((d.users || []).map(u => u.email.toLowerCase())))
+          .catch(() => {});
+      }, [token]);
 
       const userMap = {};
       for (const r of records) {
         const email = r.fields?.[f.email || 'Email'] || '(no email)';
         if (!userMap[email]) userMap[email] = [];
         userMap[email].push(r);
+      }
+      // Merge in users who signed up but have no submissions
+      for (const email of allEmails) {
+        if (!userMap[email]) userMap[email] = [];
       }
       const userList = Object.entries(userMap)
         .filter(([email]) => !search.trim() || email.toLowerCase().includes(search.trim().toLowerCase()))
@@ -4488,7 +4587,7 @@ import {
 
           {userList.length === 0 && (
             <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, fontStyle: 'italic' }}>
-              {search ? 'No users match.' : 'No submissions yet.'}
+              {search ? 'No users match.' : 'No users yet.'}
             </p>
           )}
 
@@ -5007,6 +5106,9 @@ import {
       const handleSetTags = useCallback((id, tags) =>
         setProjects(prev => prev.map(p => p.id === id ? { ...p, tags } : p)), []);
 
+      const handleEditProject = useCallback((id, { tags, hackatimeProject }) =>
+        setProjects(prev => prev.map(p => p.id === id ? { ...p, tags, hackatimeProject } : p)), []);
+
       const handleSubmitted = useCallback((projectId, recordId, itchUrl, selectedTier, tags) => {
         setProjects(prev => prev.map(p =>
           p.id === projectId
@@ -5030,6 +5132,7 @@ import {
               onSetHours={handleSetHours}
               onAddEntry={handleAddEntry}
               onSetTags={handleSetTags}
+              onEditProject={handleEditProject}
               currentProject={currentProject}
               onOpenCreateModal={() => setPage('create-project')}
               onSubmitToJam={() => setPage('submit')}

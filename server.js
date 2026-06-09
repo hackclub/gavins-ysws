@@ -201,6 +201,7 @@ const SHOP_ITEM_FIELDS = {
   coins:      'Coins',
   minPlayers: 'Min Players',
   image:      'Image',
+  shopLink:   'Shop Link',
   active:     'Active',
 };
 
@@ -217,6 +218,7 @@ const SHOP_ORDER_FIELDS = {
   orderedAt:   'Ordered At',
   address:     'Address',
   phone:       'Phone',
+  shopLink:    'Shop Link',
 };
 
 const shopItemsTableUrl = (recordId = '') =>
@@ -291,6 +293,7 @@ function shopItemFromRecord(rec) {
     coins: Number(f[SHOP_ITEM_FIELDS.coins]) || 0,
     minPlayers: Number(f[SHOP_ITEM_FIELDS.minPlayers]) || 0,
     image: f[SHOP_ITEM_FIELDS.image] || '',
+    shopLink: f[SHOP_ITEM_FIELDS.shopLink] || '',
     active: f[SHOP_ITEM_FIELDS.active] !== false,
     recordId: rec.id,
   };
@@ -304,6 +307,7 @@ function shopItemToFields(item) {
     [SHOP_ITEM_FIELDS.coins]: Math.max(0, Number(item.coins) || 0),
     [SHOP_ITEM_FIELDS.minPlayers]: Math.max(0, Number(item.minPlayers) || 0),
     [SHOP_ITEM_FIELDS.image]: String(item.image || '').trim(),
+    [SHOP_ITEM_FIELDS.shopLink]: String(item.shopLink || '').trim(),
     [SHOP_ITEM_FIELDS.active]: item.active !== false,
   };
 }
@@ -325,6 +329,7 @@ function shopOrderFromRecord(rec) {
     updatedAt: f['Updated At'] || null,
     address: f[SHOP_ORDER_FIELDS.address] || '',
     phone:   f[SHOP_ORDER_FIELDS.phone]   || '',
+    shopLink: f[SHOP_ORDER_FIELDS.shopLink] || '',
   };
 }
 
@@ -342,6 +347,7 @@ function shopOrderToFields(order) {
     [SHOP_ORDER_FIELDS.orderedAt]: order.orderedAt,
     [SHOP_ORDER_FIELDS.address]: order.address || '',
     [SHOP_ORDER_FIELDS.phone]:   order.phone   || '',
+    [SHOP_ORDER_FIELDS.shopLink]: order.shopLink || '',
   };
 }
 
@@ -353,6 +359,7 @@ function normalizeShopItem(item) {
     coins: Math.max(0, Number(item.coins) || 0),
     minPlayers: Math.max(0, Number(item.minPlayers) || 0),
     image: String(item.image || '').trim(),
+    shopLink: String(item.shopLink || '').trim(),
     active: item.active !== false,
   };
 }
@@ -1559,6 +1566,32 @@ app.post('/api/admin/user-projects', async (req, res) => {
   }
 });
 
+app.post('/api/admin/all-users', async (req, res) => {
+  if (!await checkAdmin(req, res)) return;
+  try {
+    if (!AIRTABLE_PAT) return res.status(500).json({ error: 'Airtable not configured' });
+    let records = [];
+    let offset;
+    do {
+      const url = new URL(userTableUrl());
+      url.searchParams.set('pageSize', '100');
+      url.searchParams.set('fields[]', 'Email');
+      if (offset) url.searchParams.set('offset', offset);
+      const r = await fetch(url, { headers: airtableHeaders() });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Failed to list users' });
+      records = records.concat(data.records || []);
+      offset = data.offset;
+    } while (offset);
+    const users = records
+      .map(r => ({ email: r.fields?.['Email'] || '' }))
+      .filter(u => u.email);
+    return res.json({ success: true, users });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Internal admin notes for a submission — admin-only, never shown to the submitter.
 // Stored on the submission's Airtable record so they sync across all admins.
 app.post('/api/admin/notes', async (req, res) => {
@@ -1930,6 +1963,7 @@ app.post('/api/shop/order', async (req, res) => {
       totalPlays,
       address: address.trim(),
       phone:   phone.trim(),
+      shopLink: item.shopLink || '',
       status: 'pending',
       orderedAt: new Date().toISOString(),
     };
