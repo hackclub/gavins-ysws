@@ -157,6 +157,7 @@ const SHOP_ORDER_FIELDS = {
   totalPlays:  'Total Plays',
   status:      'Status',
   orderedAt:   'Ordered At',
+  address:     'Address',
 };
 
 const shopItemsTableUrl = (recordId = '') =>
@@ -263,6 +264,7 @@ function shopOrderFromRecord(rec) {
     status: f[SHOP_ORDER_FIELDS.status] || 'pending',
     orderedAt: f[SHOP_ORDER_FIELDS.orderedAt] || rec.createdTime || new Date().toISOString(),
     updatedAt: f['Updated At'] || null,
+    address: f[SHOP_ORDER_FIELDS.address] || '',
   };
 }
 
@@ -278,6 +280,7 @@ function shopOrderToFields(order) {
     [SHOP_ORDER_FIELDS.totalPlays]: order.totalPlays,
     [SHOP_ORDER_FIELDS.status]: order.status || 'pending',
     [SHOP_ORDER_FIELDS.orderedAt]: order.orderedAt,
+    [SHOP_ORDER_FIELDS.address]: order.address || '',
   };
 }
 
@@ -1369,7 +1372,7 @@ app.post('/api/admin/adjust', async (req, res) => {
 
 // Admin: set total plays override for a user (bypasses per-game counting)
 app.post('/api/admin/set-user-plays', async (req, res) => {
-  if (!await checkAdmin(req, res)) return;
+  if (!await checkAdmin(req, res, 2)) return;
   const { email, plays } = req.body;
   if (!email) return res.status(400).json({ error: 'email required' });
   if (plays === undefined || plays === null) return res.status(400).json({ error: 'plays required' });
@@ -1403,11 +1406,22 @@ app.post('/api/user/plays', async (req, res) => {
   }
 });
 
+// Build the combined display lists (env + file-based, deduped) for the frontend.
+// The frontend uses envT1/envT2 to show the "(env)" badge and block removal.
+function buildAdminListResponse(fileList) {
+  const fileT1 = (fileList.t1 || []).map(e => e.toLowerCase());
+  const fileT2 = (fileList.t2 || []).map(e => e.toLowerCase());
+  // Env admins always appear in the combined list; file-based ones fill in the rest.
+  const t2 = [...new Set([...ADMIN_T2_EMAILS, ...fileT2])];
+  const t1 = [...new Set([...ADMIN_T1_EMAILS, ...fileT1.filter(e => !t2.includes(e))])];
+  return { t1, t2, envT1: ADMIN_T1_EMAILS, envT2: ADMIN_T2_EMAILS };
+}
+
 app.post('/api/admin/admins/list', async (req, res) => {
   const admin = await checkAdmin(req, res, 2);
   if (!admin) return;
   const list = await loadAdminList();
-  return res.json({ success: true, t1: list.t1 || [], t2: list.t2 || [], envT1: ADMIN_T1_EMAILS, envT2: ADMIN_T2_EMAILS });
+  return res.json({ success: true, ...buildAdminListResponse(list) });
 });
 
 app.post('/api/admin/admins/add', async (req, res) => {
@@ -1418,12 +1432,16 @@ app.post('/api/admin/admins/add', async (req, res) => {
   const t = Number(tier) === 2 ? 2 : 1;
   const list = await loadAdminList();
   const e = email.toLowerCase();
+  // Don't store env admins in the file — they're already covered by .env
+  if (ADMIN_T2_EMAILS.includes(e) || ADMIN_T1_EMAILS.includes(e)) {
+    return res.json({ success: true, ...buildAdminListResponse(list) });
+  }
   list.t1 = (list.t1 || []).filter(x => x.toLowerCase() !== e);
   list.t2 = (list.t2 || []).filter(x => x.toLowerCase() !== e);
   if (t === 2) list.t2.push(e);
   else list.t1.push(e);
   await saveAdminList(list);
-  return res.json({ success: true, t1: list.t1, t2: list.t2 });
+  return res.json({ success: true, ...buildAdminListResponse(list) });
 });
 
 app.post('/api/admin/admins/remove', async (req, res) => {
@@ -1432,11 +1450,14 @@ app.post('/api/admin/admins/remove', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email required' });
   const e = email.toLowerCase();
+  if (ADMIN_T2_EMAILS.includes(e) || ADMIN_T1_EMAILS.includes(e)) {
+    return res.status(400).json({ error: 'Cannot remove env-based admins — edit ADMIN_EMAILS in .env' });
+  }
   const list = await loadAdminList();
   list.t1 = (list.t1 || []).filter(x => x.toLowerCase() !== e);
   list.t2 = (list.t2 || []).filter(x => x.toLowerCase() !== e);
   await saveAdminList(list);
-  return res.json({ success: true, t1: list.t1, t2: list.t2 });
+  return res.json({ success: true, ...buildAdminListResponse(list) });
 });
 
 app.post('/api/admin/user-projects', async (req, res) => {
@@ -1775,8 +1796,10 @@ app.get('/api/shop/items', async (req, res) => {
 
 app.post('/api/shop/order', async (req, res) => {
   try {
-    const { email, itemId, accessToken } = req.body;
+    const { email, itemId, accessToken, address } = req.body;
     if (!email || !itemId) return res.status(400).json({ error: 'email and itemId required' });
+    if (!address?.trim()) return res.status(400).json({ error: 'Shipping address required' });
+    if (address.trim().length > 500) return res.status(400).json({ error: 'Address must be 500 characters or fewer' });
     if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
 
     const htProfile = await fetchHackatimeProfile(accessToken).catch(() => null);
@@ -1818,6 +1841,7 @@ app.post('/api/shop/order', async (req, res) => {
       email,
       totalHours,
       totalPlays,
+      address: address.trim(),
       status: 'pending',
       orderedAt: new Date().toISOString(),
     };
