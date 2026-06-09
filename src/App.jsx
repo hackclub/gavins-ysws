@@ -574,6 +574,20 @@ import {
             </div>
           </div>
 
+          {/* Slack CTA */}
+          <div style={{ padding: '0 40px 40px', display: 'flex', justifyContent: 'center' }}>
+            <a
+              href="https://hackclub.enterprise.slack.com/archives/C0B9833PULV"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ textDecoration: 'none' }}
+            >
+              <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '13px', padding: '14px 32px' }}>
+                Join us on Slack →
+              </ArcadeBtn>
+            </a>
+          </div>
+
           {/* Attract mode bar */}
           <div style={{ background: AMBER, padding: '7px 0', overflow: 'hidden', flexShrink: 0 }}>
             <div style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color: BG, textAlign: 'center' }}>
@@ -767,10 +781,12 @@ import {
     }
 
     /* ─── Project Detail ──────────────────────────────────────────────────── */
-    function ProjectDetail({ project, onBack, onSetHours, onAddEntry, userToken }) {
-      const [entryText, setEntryText] = useState('');
-      const [syncing,   setSyncing]   = useState(false);
-      const [syncMsg,   setSyncMsg]   = useState(null);
+    function ProjectDetail({ project, onBack, onSetHours, onAddEntry, onSetDescription, onDelete, userToken }) {
+      const [entryText,  setEntryText]  = useState('');
+      const [syncing,    setSyncing]    = useState(false);
+      const [syncMsg,    setSyncMsg]    = useState(null);
+      const [editingDesc, setEditingDesc] = useState(false);
+      const [descDraft,   setDescDraft]   = useState(project.description || '');
 
       // Once submitted (under review or accepted) the project is locked from edits.
       const isLocked = project.submissionStatus === 'under-review' || project.submissionStatus === 'accepted';
@@ -862,12 +878,22 @@ import {
           }
 
           <div style={{ padding: '32px 40px 60px' }}>
-            <button
-              onClick={onBack}
-              style={{ background: 'none', border: 'none', color: PURPLE, cursor: 'pointer', fontFamily: "'IBM Plex Mono'", fontSize: '14px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              ← Back to Projects
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <button
+                onClick={onBack}
+                style={{ background: 'none', border: 'none', color: PURPLE, cursor: 'pointer', fontFamily: "'IBM Plex Mono'", fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                ← Back to Projects
+              </button>
+              {!isLocked && (
+                <button
+                  onClick={() => { if (window.confirm(`Delete "${project.name}"? This cannot be undone.`)) { onDelete(project.id); onBack(); } }}
+                  style={{ background: 'none', border: `1px solid ${CORAL}`, color: CORAL, cursor: 'pointer', fontFamily: "'IBM Plex Mono'", fontSize: '11px', padding: '5px 12px' }}
+                >
+                  Delete Project
+                </button>
+              )}
+            </div>
 
             <h1 style={{ fontFamily: "'Press Start 2P'", fontSize: '22px', color: AMBER, marginBottom: '16px', lineHeight: 1.4 }}>
               {project.name}
@@ -924,11 +950,39 @@ import {
               </div>
             )}
 
-            {project.description && (
-              <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '15px', color: CREAM, lineHeight: 1.9, marginBottom: '36px', maxWidth: '680px' }}>
-                {project.description}
-              </p>
-            )}
+            {/* Description — editable when not locked */}
+            <div style={{ marginBottom: '36px', maxWidth: '680px' }}>
+              {isLocked ? (
+                project.description && (
+                  <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '15px', color: CREAM, lineHeight: 1.9 }}>
+                    {project.description}
+                  </p>
+                )
+              ) : editingDesc ? (
+                <div>
+                  <textarea
+                    rows={4}
+                    value={descDraft}
+                    onChange={e => setDescDraft(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', marginBottom: '10px', fontFamily: "'IBM Plex Mono'", fontSize: '14px' }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <ArcadeBtn bg={GREEN} dark={GREEND} style={{ fontSize: '11px' }} onClick={() => { onSetDescription(project.id, descDraft); setEditingDesc(false); }}>Save</ArcadeBtn>
+                    <ArcadeBtn bg={CORAL} dark={CORALD} style={{ fontSize: '11px' }} onClick={() => { setDescDraft(project.description || ''); setEditingDesc(false); }}>Cancel</ArcadeBtn>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                  {project.description
+                    ? <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '15px', color: CREAM, lineHeight: 1.9, margin: 0, flex: 1 }}>{project.description}</p>
+                    : <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: MUTED, margin: 0, flex: 1, fontStyle: 'italic' }}>No description yet.</p>
+                  }
+                  <button onClick={() => { setDescDraft(project.description || ''); setEditingDesc(true); }} style={{ background: 'none', border: `1px solid ${MUTED}`, color: MUTED, fontFamily: "'IBM Plex Mono'", fontSize: '11px', padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>
+                    Edit
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Hours block — Hackatime only */}
             <div style={{ background: CARD, border: `1px solid ${PURPLE}`, padding: '28px', marginBottom: '44px', borderRadius: 0 }}>
@@ -1033,7 +1087,7 @@ import {
     }
 
     /* ─── Projects Page ───────────────────────────────────────────────────── */
-    function ProjectsPage({ projects, totalHours, pendingHours, onCreate, onView, onSetHours, onAddEntry, onSetTags, onEditProject, currentProject, onOpenCreateModal, onSubmitToJam, userToken, user }) {
+    function ProjectsPage({ projects, totalHours, pendingHours, onCreate, onView, onSetHours, onAddEntry, onSetTags, onEditProject, onSetDescription, onDelete, currentProject, onOpenCreateModal, onSubmitToJam, userToken, user }) {
       const pct = Math.min((totalHours / 30) * 100, 100);
       const qualified = totalHours >= 30;
       const activeProjects  = projects.filter(p => p.submissionStatus !== 'under-review' && p.submissionStatus !== 'accepted');
@@ -1081,6 +1135,8 @@ import {
             onSetHours={onSetHours}
             onAddEntry={onAddEntry}
             onSetTags={onSetTags}
+            onSetDescription={onSetDescription}
+            onDelete={onDelete}
             userToken={userToken}
           />
         );
@@ -3178,6 +3234,17 @@ import {
             </p>
           )}
 
+          <a
+            href="https://hackclub.enterprise.slack.com/archives/C0B9833PULV"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ marginTop: '24px', textDecoration: 'none' }}
+          >
+            <ArcadeBtn bg={PURPLE} dark={PURPLED} style={{ fontSize: '13px', padding: '14px 32px' }}>
+              Join us on Slack →
+            </ArcadeBtn>
+          </a>
+
           <div style={{ background: AMBER, width: '100%', padding: '7px 0', marginTop: '48px' }}>
             <span style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color: BG }}>
               ★ INSERT COIN ★ INSERT COIN ★ INSERT COIN ★ INSERT COIN ★
@@ -5109,6 +5176,12 @@ import {
       const handleEditProject = useCallback((id, { tags, hackatimeProject }) =>
         setProjects(prev => prev.map(p => p.id === id ? { ...p, tags, hackatimeProject } : p)), []);
 
+      const handleSetDescription = useCallback((id, description) =>
+        setProjects(prev => prev.map(p => p.id === id ? { ...p, description } : p)), []);
+
+      const handleDeleteProject = useCallback((id) =>
+        setProjects(prev => prev.filter(p => p.id !== id)), []);
+
       const handleSubmitted = useCallback((projectId, recordId, itchUrl, selectedTier, tags) => {
         setProjects(prev => prev.map(p =>
           p.id === projectId
@@ -5133,6 +5206,8 @@ import {
               onAddEntry={handleAddEntry}
               onSetTags={handleSetTags}
               onEditProject={handleEditProject}
+              onSetDescription={handleSetDescription}
+              onDelete={handleDeleteProject}
               currentProject={currentProject}
               onOpenCreateModal={() => setPage('create-project')}
               onSubmitToJam={() => setPage('submit')}
