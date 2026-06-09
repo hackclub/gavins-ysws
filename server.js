@@ -1289,7 +1289,7 @@ app.post('/api/admin/adjust', async (req, res) => {
 
 // Admin: set total plays override for a user (bypasses per-game counting)
 app.post('/api/admin/set-user-plays', async (req, res) => {
-  if (!await checkAdmin(req, res)) return;
+  if (!await checkAdmin(req, res, 2)) return;
   const { email, plays } = req.body;
   if (!email) return res.status(400).json({ error: 'email required' });
   if (plays === undefined || plays === null) return res.status(400).json({ error: 'plays required' });
@@ -1411,7 +1411,7 @@ app.post('/api/admin/notes/add', async (req, res) => {
   try {
     const { recordId, text } = req.body;
     if (!recordId || !text?.trim()) return res.status(400).json({ error: 'recordId and text required' });
-    const note = { author: adminEmail, text: text.trim(), date: new Date().toISOString() };
+    const note = { author: adminEmail.email, text: text.trim(), date: new Date().toISOString() };
     const all = await loadAdminNotes();
     if (!all[recordId]) all[recordId] = [];
     all[recordId].push(note);
@@ -1444,7 +1444,7 @@ app.post('/api/admin/submitter-notes/add', async (req, res) => {
     const email = (req.body?.email || '').trim().toLowerCase();
     const text = req.body?.text;
     if (!email || !text?.trim()) return res.status(400).json({ error: 'email and text required' });
-    const note = { author: adminEmail, text: text.trim(), date: new Date().toISOString() };
+    const note = { author: adminEmail.email, text: text.trim(), date: new Date().toISOString() };
     const all = await loadSubmitterNotes();
     if (!all[email]) all[email] = [];
     all[email].push(note);
@@ -1720,6 +1720,7 @@ app.post('/api/shop/order', async (req, res) => {
     const { email, itemId, accessToken, address } = req.body;
     if (!email || !itemId) return res.status(400).json({ error: 'email and itemId required' });
     if (!address?.trim()) return res.status(400).json({ error: 'Shipping address required' });
+    if (address.trim().length > 500) return res.status(400).json({ error: 'Address must be 500 characters or fewer' });
     if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
 
     const htProfile = await fetchHackatimeProfile(accessToken).catch(() => null);
