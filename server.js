@@ -52,6 +52,11 @@ const FIELDS = {
 const COMMENTS_FIELD    = process.env.AIRTABLE_COMMENTS_FIELD || 'Comments Data';
 const JOURNAL_FIELD     = process.env.AIRTABLE_JOURNAL_FIELD  || 'Journal Data';
 const REVIEW_DATA_FIELD = process.env.AIRTABLE_REVIEW_DATA_FIELD || 'Review Data';
+// Internal reviewer notes, stored as JSON so they sync across all admins.
+//   ADMIN_NOTES_FIELD → long-text field on the submissions table (per project)
+//   USER_NOTES_FIELD  → long-text field on the User Projects table (per creator)
+const ADMIN_NOTES_FIELD = process.env.AIRTABLE_ADMIN_NOTES_FIELD || 'Admin Notes';
+const USER_NOTES_FIELD  = process.env.AIRTABLE_USER_NOTES_FIELD  || 'User Notes';
 
 const REVIEWS_PATH               = path.join(__dirname, '.review-decisions.json');
 const PLAYS_PATH                 = path.join(__dirname, '.play-counts.json');
@@ -727,6 +732,84 @@ async function appendSubmissionComment(gameId, comment) {
   return comment;
 }
 
+/* ── Reviewer notes on a submission (per project) — Airtable-backed, synced across admins ── */
+async function loadSubmissionAdminNotes(recordId) {
+  if (AIRTABLE_PAT) {
+    const rec = await fetchSubmissionRecord(recordId);
+    const raw = rec?.fields?.[ADMIN_NOTES_FIELD];
+    if (raw) return parseJsonField(raw, []);
+  }
+  const all = await loadAdminNotes();
+  return all[recordId] || [];
+}
+
+async function appendSubmissionAdminNote(recordId, note) {
+  if (AIRTABLE_PAT) {
+    const notes = await loadSubmissionAdminNotes(recordId); // migrates any local notes on first write
+    notes.push(note);
+    const r = await fetch(airtableUrl(recordId), {
+      method: 'PATCH',
+      headers: airtableHeaders(),
+      body: JSON.stringify({ fields: { [ADMIN_NOTES_FIELD]: JSON.stringify(notes) } }),
+    });
+    const data = await r.json().catch(() => null);
+    if (r.ok) return notes;
+    if (data?.error?.type !== 'UNKNOWN_FIELD_NAME') {
+      throw new Error(data?.error?.message || 'Failed to save note');
+    }
+  }
+  const all = await loadAdminNotes();
+  if (!all[recordId]) all[recordId] = [];
+  all[recordId].push(note);
+  await saveAdminNotes(all);
+  return all[recordId];
+}
+
+/* ── Reviewer notes about a creator (per email) — stored on the User Projects table ── */
+async function findUserRecordByEmail(email) {
+  const url = new URL(userTableUrl());
+  // Case-insensitive match so we reuse the user's existing record instead of creating a duplicate.
+  url.searchParams.set('filterByFormula', `LOWER({Email})="${String(email).toLowerCase().replace(/"/g, '\\"')}"`);
+  url.searchParams.set('maxRecords', '1');
+  const r = await fetch(url, { headers: airtableHeaders() });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) return null;
+  return data.records?.[0] || null;
+}
+
+async function loadUserNotesByEmail(email) {
+  if (AIRTABLE_PAT) {
+    const rec = await findUserRecordByEmail(email);
+    const raw = rec?.fields?.[USER_NOTES_FIELD];
+    if (raw) return parseJsonField(raw, []);
+  }
+  const all = await loadSubmitterNotes();
+  return all[String(email).toLowerCase()] || [];
+}
+
+async function appendUserNote(email, note) {
+  if (AIRTABLE_PAT) {
+    const notes = await loadUserNotesByEmail(email); // migrates any local notes on first write
+    notes.push(note);
+    const rec = await findUserRecordByEmail(email);
+    const body = JSON.stringify({ fields: { Email: email, [USER_NOTES_FIELD]: JSON.stringify(notes) } });
+    const w = rec
+      ? await fetch(userTableUrl(rec.id), { method: 'PATCH', headers: airtableHeaders(), body })
+      : await fetch(userTableUrl(),        { method: 'POST',  headers: airtableHeaders(), body });
+    const data = await w.json().catch(() => null);
+    if (w.ok) return notes;
+    if (data?.error?.type !== 'UNKNOWN_FIELD_NAME') {
+      throw new Error(data?.error?.message || 'Failed to save note');
+    }
+  }
+  const key = String(email).toLowerCase();
+  const all = await loadSubmitterNotes();
+  if (!all[key]) all[key] = [];
+  all[key].push(note);
+  await saveSubmitterNotes(all);
+  return all[key];
+}
+
 async function syncJournalToSubmission(recordId, journalEntries, tags) {
   if (!AIRTABLE_PAT || !recordId) return;
   const fields = {};
@@ -1371,13 +1454,14 @@ app.post('/api/admin/user-projects', async (req, res) => {
 });
 
 // Internal admin notes for a submission — admin-only, never shown to the submitter.
+// Stored on the submission's Airtable record so they sync across all admins.
 app.post('/api/admin/notes', async (req, res) => {
   if (!await checkAdmin(req, res)) return;
   try {
     const { recordId } = req.body;
     if (!recordId) return res.status(400).json({ error: 'recordId required' });
-    const all = await loadAdminNotes();
-    return res.json({ success: true, notes: all[recordId] || [] });
+    const notes = await loadSubmissionAdminNotes(recordId);
+    return res.json({ success: true, notes });
   } catch (err) {
     console.error('Admin notes error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -1391,25 +1475,23 @@ app.post('/api/admin/notes/add', async (req, res) => {
     const { recordId, text } = req.body;
     if (!recordId || !text?.trim()) return res.status(400).json({ error: 'recordId and text required' });
     const note = { author: adminEmail, text: text.trim(), date: new Date().toISOString() };
-    const all = await loadAdminNotes();
-    if (!all[recordId]) all[recordId] = [];
-    all[recordId].push(note);
-    await saveAdminNotes(all);
-    return res.json({ success: true, note, notes: all[recordId] });
+    const notes = await appendSubmissionAdminNote(recordId, note);
+    return res.json({ success: true, note, notes });
   } catch (err) {
     console.error('Admin add-note error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ error: err.message || 'Internal Server Error' });
   }
 });
 
 // Admin notes about a submitter — shared across all their submissions. Admin-only.
+// Stored on the creator's User Projects record so they sync across all admins.
 app.post('/api/admin/submitter-notes', async (req, res) => {
   if (!await checkAdmin(req, res)) return;
   try {
-    const email = (req.body?.email || '').trim().toLowerCase();
+    const email = (req.body?.email || '').trim();
     if (!email) return res.status(400).json({ error: 'email required' });
-    const all = await loadSubmitterNotes();
-    return res.json({ success: true, notes: all[email] || [] });
+    const notes = await loadUserNotesByEmail(email);
+    return res.json({ success: true, notes });
   } catch (err) {
     console.error('Submitter notes error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -1420,18 +1502,15 @@ app.post('/api/admin/submitter-notes/add', async (req, res) => {
   const adminEmail = await checkAdmin(req, res);
   if (!adminEmail) return;
   try {
-    const email = (req.body?.email || '').trim().toLowerCase();
+    const email = (req.body?.email || '').trim();
     const text = req.body?.text;
     if (!email || !text?.trim()) return res.status(400).json({ error: 'email and text required' });
     const note = { author: adminEmail, text: text.trim(), date: new Date().toISOString() };
-    const all = await loadSubmitterNotes();
-    if (!all[email]) all[email] = [];
-    all[email].push(note);
-    await saveSubmitterNotes(all);
-    return res.json({ success: true, note, notes: all[email] });
+    const notes = await appendUserNote(email, note);
+    return res.json({ success: true, note, notes });
   } catch (err) {
     console.error('Submitter add-note error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ error: err.message || 'Internal Server Error' });
   }
 });
 
