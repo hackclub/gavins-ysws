@@ -58,6 +58,7 @@ const PLAYS_PATH       = path.join(__dirname, '.play-counts.json');
 const COMMENTS_PATH    = path.join(__dirname, '.comments.json');
 const SHOP_ITEMS_PATH  = path.join(__dirname, '.shop-items.json');
 const SHOP_ORDERS_PATH = path.join(__dirname, '.shop-orders.json');
+const UPLOADS_DIR      = path.join(__dirname, 'uploads');
 const COINS_PER_HOUR   = 20;
 
 // Ensure the uploads directory exists for journal screenshots.
