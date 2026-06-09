@@ -2102,11 +2102,11 @@ import {
 
     // Fixed 5-tier definition — always shown, API items are bucketed into them
     const SHOP_TIERS_DEF = [
-      { num: 1, min: 5,  range: '5 players',  color: AMBER     },
-      { num: 2, min: 10, range: '10 players', color: GREEN     },
-      { num: 3, min: 20, range: '20 players', color: PURPLE    },
-      { num: 4, min: 40, range: '40 players', color: CORAL     },
-      { num: 5, min: 60, range: '60 players', color: '#ffd700' },
+      { num: 1, min: 0,  range: '0 players',  color: AMBER     },
+      { num: 2, min: 5,  range: '5 players',  color: GREEN     },
+      { num: 3, min: 10, range: '10 players', color: PURPLE    },
+      { num: 4, min: 20, range: '20 players', color: CORAL     },
+      { num: 5, min: 40, range: '40 players', color: '#ffd700' },
     ];
 
     /* ─── Shop Page ───────────────────────────────────────────────────────── */
