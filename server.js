@@ -216,6 +216,7 @@ const SHOP_ORDER_FIELDS = {
   status:      'Status',
   orderedAt:   'Ordered At',
   address:     'Address',
+  phone:       'Phone',
 };
 
 const shopItemsTableUrl = (recordId = '') =>
@@ -323,6 +324,7 @@ function shopOrderFromRecord(rec) {
     orderedAt: f[SHOP_ORDER_FIELDS.orderedAt] || rec.createdTime || new Date().toISOString(),
     updatedAt: f['Updated At'] || null,
     address: f[SHOP_ORDER_FIELDS.address] || '',
+    phone:   f[SHOP_ORDER_FIELDS.phone]   || '',
   };
 }
 
@@ -339,6 +341,7 @@ function shopOrderToFields(order) {
     [SHOP_ORDER_FIELDS.status]: order.status || 'pending',
     [SHOP_ORDER_FIELDS.orderedAt]: order.orderedAt,
     [SHOP_ORDER_FIELDS.address]: order.address || '',
+    [SHOP_ORDER_FIELDS.phone]:   order.phone   || '',
   };
 }
 
@@ -1577,7 +1580,7 @@ app.post('/api/admin/notes/add', async (req, res) => {
   try {
     const { recordId, text } = req.body;
     if (!recordId || !text?.trim()) return res.status(400).json({ error: 'recordId and text required' });
-    const note = { author: adminEmail, text: text.trim(), date: new Date().toISOString() };
+    const note = { author: adminEmail.email, text: text.trim(), date: new Date().toISOString() };
     const notes = await appendSubmissionAdminNote(recordId, note);
     return res.json({ success: true, note, notes });
   } catch (err) {
@@ -1608,7 +1611,7 @@ app.post('/api/admin/submitter-notes/add', async (req, res) => {
     const email = (req.body?.email || '').trim();
     const text = req.body?.text;
     if (!email || !text?.trim()) return res.status(400).json({ error: 'email and text required' });
-    const note = { author: adminEmail, text: text.trim(), date: new Date().toISOString() };
+    const note = { author: adminEmail.email, text: text.trim(), date: new Date().toISOString() };
     const notes = await appendUserNote(email, note);
     return res.json({ success: true, note, notes });
   } catch (err) {
@@ -1878,10 +1881,12 @@ app.get('/api/shop/items', async (req, res) => {
 
 app.post('/api/shop/order', async (req, res) => {
   try {
-    const { email, itemId, accessToken, address } = req.body;
+    const { email, itemId, accessToken, address, phone } = req.body;
     if (!email || !itemId) return res.status(400).json({ error: 'email and itemId required' });
     if (!address?.trim()) return res.status(400).json({ error: 'Shipping address required' });
     if (address.trim().length > 500) return res.status(400).json({ error: 'Address must be 500 characters or fewer' });
+    if (!phone?.trim()) return res.status(400).json({ error: 'Phone number required' });
+    if (phone.trim().length > 30) return res.status(400).json({ error: 'Phone number too long' });
     if (!accessToken) return res.status(401).json({ error: 'Authentication required' });
 
     const htProfile = await fetchHackatimeProfile(accessToken).catch(() => null);
@@ -1924,6 +1929,7 @@ app.post('/api/shop/order', async (req, res) => {
       totalHours,
       totalPlays,
       address: address.trim(),
+      phone:   phone.trim(),
       status: 'pending',
       orderedAt: new Date().toISOString(),
     };

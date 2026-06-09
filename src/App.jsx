@@ -2119,6 +2119,7 @@ import {
       const [orderMsg,     setOrderMsg]     = useState(null);
       const [addressItem,  setAddressItem]  = useState(null);
       const [addressInput, setAddressInput] = useState('');
+      const [phoneInput,   setPhoneInput]   = useState('');
       const [addressErr,   setAddressErr]   = useState(null);
       const totalCoins = Math.floor((totalHours || 0) * COINS_PER_HOUR);
 
@@ -2156,15 +2157,17 @@ import {
         if (!user?.email) { setOrderMsg('Sign in to place an order.'); return; }
         setAddressItem(item);
         setAddressInput('');
+        setPhoneInput('');
         setAddressErr(null);
       };
 
       const handleConfirmOrder = async () => {
         if (!addressInput.trim()) { setAddressErr('Please enter a shipping address.'); return; }
+        if (!phoneInput.trim()) { setAddressErr('Please enter a phone number.'); return; }
         setOrderingId(addressItem.id);
         setAddressErr(null);
         try {
-          await placeShopOrder(user.email, addressItem.id, user?.token, addressInput.trim());
+          await placeShopOrder(user.email, addressItem.id, user?.token, addressInput.trim(), phoneInput.trim());
           setOrderMsg(`Ordered: ${addressItem.title}`);
           setAddressItem(null);
         } catch (err) {
@@ -2374,6 +2377,21 @@ import {
                     padding: '10px 12px', resize: 'vertical', outline: 'none',
                   }}
                 />
+                <label style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: CREAM, display: 'block', marginTop: '16px', marginBottom: '6px' }}>
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={phoneInput}
+                  onChange={e => setPhoneInput(e.target.value)}
+                  placeholder="+1 (555) 000-0000"
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    background: '#0f0820', border: `1px solid ${MUTED}`,
+                    color: CREAM, fontFamily: "'IBM Plex Mono'", fontSize: '13px',
+                    padding: '10px 12px', outline: 'none',
+                  }}
+                />
                 {addressErr && (
                   <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '12px', color: CORAL, marginTop: '8px' }}>{addressErr}</p>
                 )}
@@ -2402,14 +2420,105 @@ import {
 
     /* ─── FAQ Page ────────────────────────────────────────────────────────── */
     function FAQPage() {
+      const [open, setOpen] = React.useState(null);
+      const toggle = i => setOpen(open === i ? null : i);
+
+      const FAQ_ITEMS = [
+        {
+          q: 'What counts as a game?',
+          a: (
+            <div>
+              <p style={{ marginBottom: '10px' }}>Your submission needs to hit two marks:</p>
+              <p style={{ marginBottom: '6px' }}><span style={{ color: AMBER }}>Replayability</span> — players should want to (and be able to) play again after finishing. Think score-chasing, randomised levels, or a clean "Play Again" flow.</p>
+              <p><span style={{ color: AMBER }}>Theme</span> — your game should have a clear concept or aesthetic that ties the whole experience together.</p>
+            </div>
+          ),
+        },
+        {
+          q: 'How do I publish my game in Arcade?',
+          a: (
+            <ol style={{ paddingLeft: '20px', lineHeight: 2 }}>
+              <li>Publish your game onto <strong>itch.io</strong> as a public project.</li>
+              <li>On your itch.io game page, open the <strong>Embed</strong> section.</li>
+              <li>Copy the embed HTML snippet.</li>
+              <li>Paste it into your submission on the <strong>Projects</strong> page here.</li>
+            </ol>
+          ),
+        },
+        {
+          q: 'How can I get involved with Hack Club?',
+          a: (
+            <p>
+              Join our Slack community!{' '}
+              <a
+                href="https://app.slack.com/client/E09V59WQY1E/C0B9833PULV"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: AMBER, textDecoration: 'underline', wordBreak: 'break-all' }}
+              >
+                app.slack.com/client/E09V59WQY1E/C0B9833PULV
+              </a>
+            </p>
+          ),
+        },
+        {
+          q: 'What is the difference between Players and Views?',
+          a: (
+            <div>
+              <p style={{ marginBottom: '10px' }}><span style={{ color: GREEN }}>Views</span> — increment every time someone loads your game page, even if it's the same person visiting multiple times.</p>
+              <p><span style={{ color: PURPLE }}>Players</span> — count unique users only. If the same person plays your game ten times, you still get just <strong>1 player</strong>. Players are what unlock Shop tiers.</p>
+            </div>
+          ),
+        },
+      ];
+
       return (
-        <div className="fade-in" style={{ padding: '48px 40px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-          <img src="faq.png" alt="FAQ" className="sprite" style={{ width: 160, height: 'auto', marginBottom: '32px' }} />
-          <h1 style={{ fontFamily: "'Press Start 2P'", fontSize: '24px', color: AMBER, marginBottom: '20px', lineHeight: 1.4 }}>FAQ</h1>
-          <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '16px', color: CREAM, lineHeight: 1.9, marginBottom: '32px', maxWidth: '480px' }}>
-            Got questions? They'll be answered here soon.
-          </p>
-          <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: MUTED }}><Cursor /></div>
+        <div className="fade-in" style={{ padding: '48px 40px 64px', maxWidth: '720px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '40px' }}>
+            <img src="faq.png" alt="FAQ" className="sprite" style={{ width: 64, height: 'auto' }} />
+            <h1 style={{ fontFamily: "'Press Start 2P'", fontSize: '18px', color: AMBER, lineHeight: 1.5, margin: 0 }}>FAQ</h1>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {FAQ_ITEMS.map((item, i) => (
+              <div
+                key={i}
+                style={{
+                  background: CARD,
+                  border: `1px solid ${open === i ? AMBER + '66' : AMBER + '22'}`,
+                  borderRadius: '4px',
+                  overflow: 'hidden',
+                  transition: 'border-color 0.2s',
+                }}
+              >
+                <button
+                  onClick={() => toggle(i)}
+                  style={{
+                    width: '100%', textAlign: 'left', background: 'none', border: 'none',
+                    padding: '18px 20px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+                  }}
+                >
+                  <span style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color: CREAM, lineHeight: 1.6 }}>
+                    {item.q}
+                  </span>
+                  <span style={{ color: AMBER, fontSize: '16px', flexShrink: 0, transition: 'transform 0.2s', transform: open === i ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                    ▾
+                  </span>
+                </button>
+                {open === i && (
+                  <div style={{
+                    fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.9,
+                    padding: '0 20px 20px',
+                    borderTop: `1px solid ${AMBER}22`,
+                    paddingTop: '16px',
+                  }}>
+                    {item.a}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       );
     }
@@ -3295,7 +3404,8 @@ import {
                 <div key={i} style={{ background: '#0f0820', border: `1px solid ${MUTED}`, borderRadius: '2px', padding: '8px 10px' }}>
                   <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.text}</div>
                   <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '9px', color: MUTED, marginTop: '5px' }}>
-                    {n.author}{n.date ? ` · ${new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                    {typeof n.author === 'object' ? (n.author?.email || 'Admin') : (n.author || 'Admin')}
+                    {n.date ? ` · ${new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
                   </div>
                 </div>
               ))}
@@ -3358,6 +3468,8 @@ import {
 
       const [hoursOverride, setHoursOverride] = useState(recordHours != null ? String(recordHours) : '');
       const [playsOverride, setPlaysOverride] = useState('');
+      const [savingAdj,     setSavingAdj]     = useState(false);
+      const [adjMsg,        setAdjMsg]        = useState(null);
 
       const saveAdjustments = async () => {
         if (hoursOverride === '' && playsOverride === '') return;

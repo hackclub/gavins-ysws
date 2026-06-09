@@ -179,8 +179,8 @@ export async function getShopItems() {
   return data;
 }
 
-export function placeShopOrder(email, itemId, accessToken, address) {
-  return postJSON('/api/shop/order', { email, itemId, accessToken, address });
+export function placeShopOrder(email, itemId, accessToken, address, phone) {
+  return postJSON('/api/shop/order', { email, itemId, accessToken, address, phone });
 }
 
 export function adminShopItems(accessToken) {
