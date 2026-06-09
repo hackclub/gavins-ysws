@@ -502,13 +502,13 @@ import {
                 The Challenge
               </h2>
               <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '15px', color: CREAM, lineHeight: 1.9, marginBottom: '20px' }}>
-                Build a game that feels like it belongs inside a real arcade cabinet. Think coin slots, high score tables, attract mode, relentless difficulty curves, and 1–3 minute play sessions. The aesthetic, the mechanics, the soul — all of it should feel like it came straight out of a 1980s arcade.
+                Try to build a game with an arcade theme — think pixel art, score chasing, lives systems, fast restarts, and that classic cabinet feel. The aesthetic and mechanics should channel the golden age of arcades. How ever the arcade theme isnt a requirement
               </p>
               <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '15px', color: CREAM, lineHeight: 1.9, marginBottom: '20px' }}>
-                Your game must include: a credit/lives system, a high score leaderboard with 3-letter initials, an attract mode on the title screen, and punishing difficulty that ramps over time.
+                Your game needs a complete loop (start → play → win/lose → play again), a main menu, and real replayability. Keep players coming back.
               </p>
               <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '15px', color: CREAM, lineHeight: 1.9 }}>
-                The website you build for your game is just as important as the game itself. It should look like the cabinet — marquee header, CRT screen section, side art panels. You ship both.
+                When you're done, upload it to itch.io and submit the link here..
               </p>
             </div>
 
@@ -2576,33 +2576,41 @@ import {
       {
         num: '01',
         color: AMBER,
+        title: 'Arcade Theme',
+        icon: '',
+        desc: 'Your game should feel like it came out of an arcade cabinet. Think pixel art, score chasing, lives systems, fast restarts, and that classic golden-age aesthetic.',
+        chips: ['Pixel / retro aesthetic', 'Score or lives system', 'Arcade feel'],
+      },
+      {
+        num: '02',
+        color: GREEN,
         title: 'Complete Game Loop',
         icon: '',
         desc: 'Your game must have a clear beginning, middle, and end. The player should be able to start, play, win or lose, and return to the start — all without leaving the game.',
         chips: ['Start state', 'Win / lose condition', 'Return to menu'],
       },
       {
-        num: '02',
-        color: GREEN,
+        num: '03',
+        color: PURPLE,
         title: 'Main Menu',
         icon: '',
         desc: 'Include a main menu screen that greets the player before the game begins. At minimum it should show your game title and a way to start playing.',
         chips: ['Title screen', 'Start button', 'Optional: settings / credits'],
       },
       {
-        num: '03',
-        color: PURPLE,
+        num: '04',
+        color: CORAL,
         title: 'Replayability',
         icon: '',
         desc: 'Players should want — and be able — to play again. This can mean randomised levels, score chasing, unlockables, or simply a "Play Again" button after the game ends.',
         chips: ['Play again flow', 'Score / progress', 'Varied experience'],
       },
       {
-        num: '04',
-        color: CORAL,
-        title: 'Submit to itch.io',
+        num: '05',
+        color: GREEN,
+        title: 'Upload to itch.io',
         icon: '',
-        desc: 'Export your finished game and upload it to itch.io as a public project. Paste the itch.io link into the Projects page here to complete your submission.',
+        desc: 'Upload your finished game to itch.io as a public project. No separate website needed — just paste your itch.io link into the Projects page here to submit.',
         chips: ['Export build', 'Publish on itch.io', 'Submit link here'],
       },
     ];
@@ -3035,12 +3043,50 @@ import {
             </p>
           </div>
 
-          <img src="cabinet.png" alt="" className="sprite" style={{ width: 140, height: 'auto', marginBottom: '32px' }} />
+          <img src="cabinet.png" alt="" className="sprite" style={{ width: 140, height: 'auto', marginBottom: '40px' }} />
+
+          {/* What is this */}
+          <div style={{ maxWidth: '640px', width: '100%', marginBottom: '48px', textAlign: 'left' }}>
+            <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '13px', color: AMBER, marginBottom: '20px', lineHeight: 1.6, textAlign: 'center' }}>
+              WHAT IS INSERT COIN?
+            </h2>
+            <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '14px', color: CREAM, lineHeight: 1.9, marginBottom: '24px', textAlign: 'center' }}>
+              Insert Coin is a <span style={{ color: AMBER }}>You Ship We Ship</span> game jam by Hack Club.
+              Build an arcade-themed game, log your hours, and we'll ship you real prizes based on how much time you put in.
+            </p>
+
+            {/* How it works steps */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {[
+                { num: '01', color: AMBER,  label: 'Build',   desc: 'Make an arcade-themed game and track your hours in Hackatime while you build.' },
+                { num: '02', color: GREEN,  label: 'Submit',  desc: 'Upload your game to itch.io and submit the link here once you hit 5+ hours.' },
+                { num: '03', color: PURPLE, label: 'Earn',    desc: 'Get your game published in the Arcade and earn coins from players who play it.' },
+                { num: '04', color: CORAL,  label: 'Get Paid',desc: 'Spend your coins and hours in the Shop to unlock real physical rewards shipped to you.' },
+              ].map(({ num, color, label, desc }) => (
+                <div key={num} style={{
+                  background: CARD, border: `1px solid ${color}33`,
+                  padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: '16px',
+                }}>
+                  <span style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color, flexShrink: 0, lineHeight: 1.8 }}>
+                    {num}
+                  </span>
+                  <div>
+                    <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', color, marginBottom: '6px', lineHeight: 1.8 }}>
+                      {label}
+                    </div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '13px', color: CREAM, lineHeight: 1.8 }}>
+                      {desc}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '14px', color: AMBER, marginBottom: '16px', lineHeight: 1.6 }}>
             SIGN IN TO PLAY
           </h2>
-          <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '15px', color: CREAM, lineHeight: 1.9, maxWidth: '480px', marginBottom: '32px' }}>
+          <p style={{ fontFamily: "'IBM Plex Mono'", fontSize: '15px', color: CREAM, lineHeight: 1.9, maxWidth: '480px', marginBottom: '32px', textAlign: 'center' }}>
             Sign in with your Hackatime account to track your hours, log projects, and submit to the jam.
           </p>
 
