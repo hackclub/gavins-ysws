@@ -2534,11 +2534,12 @@ import {
 
     /* ─── Layered background scene ───────────────────────────────────────── */
 
-    // Pages at ground level vs underground
-    const ABOVE_GROUND = new Set(['home','shop','faq','tutorial','guidelines','admin','arcade']);
-    const altOf    = p => ABOVE_GROUND.has(p) ? 'above' : 'below';
-    // Home and FAQ each have their own unique terrain; all others share their altitude's terrain
-    const terrainOf = p => p === 'home' ? 'home' : p === 'faq' ? 'faq' : altOf(p);
+    // Three altitude tiers:  0=below (underground)  1=above (ground)  2=space (admin)
+    const ABOVE_GROUND = new Set(['home','shop','faq','tutorial','guidelines','arcade']);
+    const ALT_LEVEL    = { below: 0, above: 1, space: 2 };
+    const altOf        = p => p === 'admin' ? 'space' : ABOVE_GROUND.has(p) ? 'above' : 'below';
+    // Home, FAQ, and Admin each have their own unique terrain; all others share their altitude's terrain
+    const terrainOf = p => p === 'home' ? 'home' : p === 'faq' ? 'faq' : p === 'admin' ? 'admin' : altOf(p);
 
     // Sky layers (fixed, never slide — one per altitude, fade between them)
     const SKY_ABOVE = { file: 'bg2-layer-0.png', op: 0.50 };
@@ -2554,6 +2555,11 @@ import {
     // FAQ desert oasis frames (3 frames — moon phase + pond shimmer cycle)
     const FAQ_FRAMES = [
       'bg4-layer-0.png','bg4-layer-1.png','bg4-layer-2.png','bg4-layer-1.png',
+    ];
+
+    // Admin page — space pixel art (4 frames: asteroids drifting, moon cycling)
+    const ADMIN_FRAMES = [
+      'admin-bg-0.png','admin-bg-1.png','admin-bg-2.png','admin-bg-3.png',
     ];
 
     // Terrain layers per page/altitude
@@ -2584,6 +2590,10 @@ import {
       below: [
         { frames: CAVE_FRAMES, speed: 400, op: 1.0, cover: true },
       ],
+      // ── Admin page — space pixel art with drifting asteroids ─────────────
+      admin: [
+        { frames: ADMIN_FRAMES, speed: 600, op: 1.0, contain: true },
+      ],
     };
 
     // Animation pairs per transition direction
@@ -2602,9 +2612,10 @@ import {
     };
 
     // Frame-sequence layer — cycles through an array of image files
-    // cover: fills container completely (objectFit cover, anchored top) — use for full-scene frames
+    // cover:   fills container completely (objectFit cover, anchored top)
+    // contain: fits entire image inside container with no cropping (objectFit contain, centered)
     // anchorTop: non-cover anchor to top edge; default anchors to bottom edge
-    function FrameAnimLayer({ frames, speed, op, cover, anchorTop }) {
+    function FrameAnimLayer({ frames, speed, op, cover, contain, anchorTop }) {
       const [idx, setIdx] = useState(0);
       useEffect(() => {
         const id = setInterval(() => setIdx(i => (i + 1) % frames.length), speed);
@@ -2619,8 +2630,10 @@ import {
             top: 0, left: 0,
             width: '100%',
             ...(cover
-              ? { height: '100%', objectFit: 'cover', objectPosition: 'top' }
-              : { height: 'auto', ...(anchorTop ? {} : { top: 'auto', bottom: 0 }) }
+              ? { height: '100%', objectFit: 'cover',   objectPosition: 'top center' }
+              : contain
+                ? { height: '100%', objectFit: 'contain', objectPosition: 'center center' }
+                : { height: 'auto', ...(anchorTop ? {} : { top: 'auto', bottom: 0 }) }
             ),
             imageRendering: 'pixelated',
             display: 'block',
@@ -2645,6 +2658,7 @@ import {
                   speed={layer.speed}
                   op={layer.op}
                   cover={layer.cover}
+                  contain={layer.contain}
                   anchorTop={layer.anchorTop}
                 />
               );
@@ -2669,24 +2683,23 @@ import {
       const [exitAnim,  setExitAnim]  = useState(null);
       const prevRef = useRef(page);
       const timerRef = useRef(null);
-      const above = altOf(page) === 'above';
+      const skyState = altOf(page); // 'above' | 'below' | 'space'
 
       useEffect(() => {
         const fromPage = prevRef.current;
         if (fromPage === page) return;
         prevRef.current = page;
 
-        // Direction uses altitude (above/below) for the up/down logic
-        const fromAlt = altOf(fromPage);
-        const toAlt   = altOf(page);
+        // Numeric levels: below=0, above=1, space=2
+        const fromLevel = ALT_LEVEL[altOf(fromPage)];
+        const toLevel   = ALT_LEVEL[altOf(page)];
 
         let dir;
-        if (fromAlt === toAlt) dir = 'left';
-        else if (fromAlt === 'above' && toAlt === 'below') dir = 'down';
+        if (fromLevel === toLevel) dir = 'left';
+        else if (toLevel < fromLevel) dir = 'down';
         else dir = 'up';
 
         const { enter, exit } = SLIDE[dir];
-        // Terrain key may differ even within the same altitude (e.g. home vs shop)
         setExiting(terrainOf(fromPage));
         setExitAnim(exit);
         setEnterAnim(enter);
@@ -2702,15 +2715,15 @@ import {
 
       return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-          {/* Sky — fixed, never slides, fades between above/below */}
+          {/* Sky — fixed, never slides, fades between above/below/space */}
           <img src={SKY_ABOVE.file} alt="" style={{
             ...LAYER_STYLE, height: '100%', objectFit: 'cover', objectPosition: 'bottom',
-            opacity: above ? SKY_ABOVE.op : 0,
+            opacity: skyState === 'above' ? SKY_ABOVE.op : 0,
             transition: `opacity ${DURATION} ${EASE}`,
           }} />
           <img src={SKY_BELOW.file} alt="" style={{
             ...LAYER_STYLE, height: '100%', objectFit: 'cover', objectPosition: 'bottom',
-            opacity: above ? 0 : SKY_BELOW.op,
+            opacity: skyState === 'below' ? SKY_BELOW.op : 0,
             transition: `opacity ${DURATION} ${EASE}`,
           }} />
 
