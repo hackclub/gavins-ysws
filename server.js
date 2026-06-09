@@ -24,8 +24,9 @@ const AIRTABLE_PAT        = process.env.AIRTABLE_PAT;
 const AIRTABLE_BASE_ID    = process.env.AIRTABLE_BASE_ID    || 'appJvKyj02poym6qI';
 const AIRTABLE_TABLE      = process.env.AIRTABLE_TABLE      || 'tbluyQdN8QAo3rT6P';
 const AIRTABLE_USER_TABLE      = process.env.AIRTABLE_USER_TABLE      || 'User Projects';
-const AIRTABLE_SHOP_ITEMS_TABLE = process.env.AIRTABLE_SHOP_ITEMS_TABLE || 'Shop Items';
+const AIRTABLE_SHOP_ITEMS_TABLE  = process.env.AIRTABLE_SHOP_ITEMS_TABLE  || 'Shop Items';
 const AIRTABLE_SHOP_ORDERS_TABLE = process.env.AIRTABLE_SHOP_ORDERS_TABLE || 'Shop Orders';
+const AIRTABLE_ADMINS_TABLE      = process.env.AIRTABLE_ADMINS_TABLE      || 'Admins';
 // T1 = basic admins (review, users, projects). T2 = super admins (+ shop, manage admins).
 // ADMIN_EMAILS = T2 super admins (backwards-compatible with existing .env).
 // ADMIN_T1_EMAILS = T1 basic admins.
@@ -112,11 +113,68 @@ async function saveSubmitterNotes(data) {
   await fs.writeFile(ADMIN_SUBMITTER_NOTES_PATH, JSON.stringify(data, null, 2));
 }
 
+// Admin table field names (create an "Admins" table in your Airtable base with these columns)
+const ADMIN_TABLE_FIELDS = {
+  email: process.env.AIRTABLE_ADMINS_EMAIL_FIELD || 'Email',
+  tier:  process.env.AIRTABLE_ADMINS_TIER_FIELD  || 'Tier',
+};
+
+const adminTableUrl = (recordId = '') =>
+  `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_ADMINS_TABLE)}${recordId ? '/' + recordId : ''}`;
+
+// Returns { t1: [emails], t2: [emails], records: [{id, email, tier}] }
+// Primary: Airtable "Admins" table. Fallback: local .admin-list.json
 async function loadAdminList() {
-  try { return JSON.parse(await fs.readFile(ADMIN_LIST_PATH, 'utf8')); } catch { return { t1: [], t2: [] }; }
+  if (AIRTABLE_PAT) {
+    try {
+      const records = await fetchAllAirtableRecords(adminTableUrl);
+      const t1 = [], t2 = [], rows = [];
+      for (const r of records) {
+        const email = String(r.fields?.[ADMIN_TABLE_FIELDS.email] || '').trim().toLowerCase();
+        const tier  = Number(r.fields?.[ADMIN_TABLE_FIELDS.tier] || 0);
+        if (!email) continue;
+        rows.push({ id: r.id, email, tier });
+        if (tier === 2) t2.push(email); else t1.push(email);
+      }
+      return { t1, t2, records: rows };
+    } catch (err) {
+      console.warn('[loadAdminList] Airtable failed, using local fallback:', err.message);
+    }
+  }
+  // Local fallback
+  try { return JSON.parse(await fs.readFile(ADMIN_LIST_PATH, 'utf8')); } catch { return { t1: [], t2: [], records: [] }; }
 }
-async function saveAdminList(data) {
+
+// Write-through helper — only used when Airtable isn't available
+async function saveAdminListLocal(data) {
   await fs.writeFile(ADMIN_LIST_PATH, JSON.stringify(data, null, 2));
+}
+
+async function airtableAdminAdd(email, tier) {
+  const lower = email.trim().toLowerCase();
+  // If a record already exists for this email, patch its tier instead of creating a duplicate
+  const list = await loadAdminList();
+  const existing = list.records?.find(r => r.email === lower);
+  if (existing) {
+    await fetch(adminTableUrl(existing.id), {
+      method: 'PATCH', headers: { ...airtableHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { [ADMIN_TABLE_FIELDS.tier]: tier } }),
+    });
+  } else {
+    await fetch(adminTableUrl(), {
+      method: 'POST', headers: { ...airtableHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { [ADMIN_TABLE_FIELDS.email]: lower, [ADMIN_TABLE_FIELDS.tier]: tier } }),
+    });
+  }
+}
+
+async function airtableAdminRemove(email) {
+  const lower = email.trim().toLowerCase();
+  const list = await loadAdminList();
+  const existing = list.records?.find(r => r.email === lower);
+  if (existing) {
+    await fetch(adminTableUrl(existing.id), { method: 'DELETE', headers: airtableHeaders() });
+  }
 }
 
 async function loadUserPlays() {
@@ -1420,28 +1478,40 @@ function buildAdminListResponse(fileList) {
 app.post('/api/admin/admins/list', async (req, res) => {
   const admin = await checkAdmin(req, res, 2);
   if (!admin) return;
-  const list = await loadAdminList();
-  return res.json({ success: true, ...buildAdminListResponse(list) });
+  try {
+    const list = await loadAdminList();
+    return res.json({ success: true, ...buildAdminListResponse(list) });
+  } catch (err) { return res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/admin/admins/add', async (req, res) => {
   const admin = await checkAdmin(req, res, 2);
   if (!admin) return;
   const { email, tier } = req.body;
-  if (!email) return res.status(400).json({ error: 'email required' });
+  if (!email || ![1, 2].includes(Number(tier))) return res.status(400).json({ error: 'email and tier (1 or 2) required' });
+  const e = email.trim().toLowerCase();
   const t = Number(tier) === 2 ? 2 : 1;
-  const list = await loadAdminList();
-  const e = email.toLowerCase();
-  // Don't store env admins in the file — they're already covered by .env
-  if (ADMIN_T2_EMAILS.includes(e) || ADMIN_T1_EMAILS.includes(e)) {
-    return res.json({ success: true, ...buildAdminListResponse(list) });
-  }
-  list.t1 = (list.t1 || []).filter(x => x.toLowerCase() !== e);
-  list.t2 = (list.t2 || []).filter(x => x.toLowerCase() !== e);
-  if (t === 2) list.t2.push(e);
-  else list.t1.push(e);
-  await saveAdminList(list);
-  return res.json({ success: true, ...buildAdminListResponse(list) });
+  try {
+    // Load current list first so we can build an optimistic response
+    const list = await loadAdminList();
+    if (AIRTABLE_PAT) {
+      await airtableAdminAdd(e, t);
+    } else {
+      if (!ADMIN_T2_EMAILS.includes(e) && !ADMIN_T1_EMAILS.includes(e)) {
+        list.t1 = (list.t1 || []).filter(x => x !== e);
+        list.t2 = (list.t2 || []).filter(x => x !== e);
+        if (t === 2) list.t2.push(e); else list.t1.push(e);
+        await saveAdminListLocal(list);
+      }
+    }
+    // Build optimistic response — include the newly added email without re-fetching
+    const optimistic = {
+      t1: (list.t1 || []).filter(x => x !== e),
+      t2: (list.t2 || []).filter(x => x !== e),
+    };
+    if (t === 2) optimistic.t2.push(e); else optimistic.t1.push(e);
+    return res.json({ success: true, ...buildAdminListResponse(optimistic) });
+  } catch (err) { return res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/admin/admins/remove', async (req, res) => {
@@ -1449,15 +1519,27 @@ app.post('/api/admin/admins/remove', async (req, res) => {
   if (!admin) return;
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email required' });
-  const e = email.toLowerCase();
+  const e = email.trim().toLowerCase();
   if (ADMIN_T2_EMAILS.includes(e) || ADMIN_T1_EMAILS.includes(e)) {
-    return res.status(400).json({ error: 'Cannot remove env-based admins — edit ADMIN_EMAILS in .env' });
+    return res.status(400).json({ error: 'Cannot remove env-configured admins — edit ADMIN_EMAILS or ADMIN_T1_EMAILS in .env' });
   }
-  const list = await loadAdminList();
-  list.t1 = (list.t1 || []).filter(x => x.toLowerCase() !== e);
-  list.t2 = (list.t2 || []).filter(x => x.toLowerCase() !== e);
-  await saveAdminList(list);
-  return res.json({ success: true, ...buildAdminListResponse(list) });
+  try {
+    // Load first so we can build optimistic response
+    const list = await loadAdminList();
+    if (AIRTABLE_PAT) {
+      await airtableAdminDelete(e);
+    } else {
+      list.t1 = (list.t1 || []).filter(x => x !== e);
+      list.t2 = (list.t2 || []).filter(x => x !== e);
+      await saveAdminListLocal(list);
+    }
+    // Optimistic response — remove the email without re-fetching
+    const optimistic = {
+      t1: (list.t1 || []).filter(x => x !== e),
+      t2: (list.t2 || []).filter(x => x !== e),
+    };
+    return res.json({ success: true, ...buildAdminListResponse(optimistic) });
+  } catch (err) { return res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/admin/user-projects', async (req, res) => {

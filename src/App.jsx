@@ -2299,15 +2299,21 @@ import {
                           ) : null}
                           {/* Info strip */}
                           <div style={{
-                            padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '3px',
+                            padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '5px',
                             borderTop: `1px solid ${unlocked ? color + '33' : MUTED + '22'}`,
+                            flex: 1,
                           }}>
                             <div style={{ fontFamily: "'Press Start 2P'", fontSize: '7px', color: unlocked ? color : MUTED, lineHeight: 1.7 }}>
                               {item.title}
                             </div>
+                            {item.desc && (
+                              <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: '11px', color: MUTED, lineHeight: 1.6 }}>
+                                {item.desc}
+                              </div>
+                            )}
                             {item.coins > 0 && (
                               <div style={{ fontFamily: "'Press Start 2P'", fontSize: '9px', fontWeight: 700,
-                                color: canAfford ? AMBER : MUTED, lineHeight: 1.6 }}>
+                                color: canAfford ? AMBER : MUTED, lineHeight: 1.6, marginTop: '2px' }}>
                                 ¢{item.coins}
                                 {unlocked && !canAfford && (
                                   <div style={{ fontFamily: "'IBM Plex Mono'", fontWeight: 400, fontSize: '9px', marginTop: '2px', color: MUTED }}>
@@ -4319,13 +4325,20 @@ import {
 
       useEffect(() => { load(); }, [load]);
 
+      const applyAdminData = (d) => {
+        if (d.t1) setT1(d.t1);
+        if (d.t2) setT2(d.t2);
+        if (d.envT1) setEnvT1(d.envT1);
+        if (d.envT2) setEnvT2(d.envT2);
+      };
+
       const addAdmin = async (e) => {
         e.preventDefault();
         if (!newEmail.trim()) return;
         setSaving(true); setError(null);
         try {
           const d = await adminAddAdmin(token, newEmail.trim(), newTier);
-          setT1(d.t1 || []); setT2(d.t2 || []);
+          applyAdminData(d);
           setNewEmail(''); setNewTier(1);
         } catch (err) { setError(err.message); }
         finally { setSaving(false); }
@@ -4336,7 +4349,7 @@ import {
         setError(null);
         try {
           const d = await adminRemoveAdmin(token, email);
-          setT1(d.t1 || []); setT2(d.t2 || []);
+          applyAdminData(d);
         } catch (err) { setError(err.message); }
       };
 
