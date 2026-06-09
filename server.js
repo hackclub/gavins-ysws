@@ -1872,7 +1872,7 @@ app.post('/api/user/projects/save', async (req, res) => {
 app.get('/api/shop/items', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    const items = (await loadShopItems()).filter(i => i.active !== false && i.title && i.minPlayers > 0);
+    const items = (await loadShopItems()).filter(i => i.active !== false && i.title && i.minPlayers >= 0);
     return res.json({ success: true, items, coinsPerHour: COINS_PER_HOUR, storage: AIRTABLE_PAT ? 'airtable' : 'local' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
