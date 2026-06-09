@@ -53,13 +53,17 @@ const COMMENTS_FIELD    = process.env.AIRTABLE_COMMENTS_FIELD || 'Comments Data'
 const JOURNAL_FIELD     = process.env.AIRTABLE_JOURNAL_FIELD  || 'Journal Data';
 const REVIEW_DATA_FIELD = process.env.AIRTABLE_REVIEW_DATA_FIELD || 'Review Data';
 
-const REVIEWS_PATH     = path.join(__dirname, '.review-decisions.json');
-const PLAYS_PATH       = path.join(__dirname, '.play-counts.json');
-const COMMENTS_PATH    = path.join(__dirname, '.comments.json');
-const SHOP_ITEMS_PATH  = path.join(__dirname, '.shop-items.json');
-const SHOP_ORDERS_PATH = path.join(__dirname, '.shop-orders.json');
-const UPLOADS_DIR      = path.join(__dirname, 'uploads');
-const COINS_PER_HOUR   = 20;
+const REVIEWS_PATH               = path.join(__dirname, '.review-decisions.json');
+const PLAYS_PATH                 = path.join(__dirname, '.play-counts.json');
+const COMMENTS_PATH              = path.join(__dirname, '.comments.json');
+const SHOP_ITEMS_PATH            = path.join(__dirname, '.shop-items.json');
+const SHOP_ORDERS_PATH           = path.join(__dirname, '.shop-orders.json');
+const ADMIN_NOTES_PATH           = path.join(__dirname, '.admin-notes.json');
+const ADMIN_SUBMITTER_NOTES_PATH = path.join(__dirname, '.admin-submitter-notes.json');
+const ADMIN_LIST_PATH            = path.join(__dirname, '.admin-list.json');
+const USER_PLAYS_PATH            = path.join(__dirname, '.user-plays.json');
+const UPLOADS_DIR                = path.join(__dirname, 'uploads');
+const COINS_PER_HOUR             = 20;
 
 // Ensure the uploads directory exists for journal screenshots.
 fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(() => {});
@@ -101,6 +105,30 @@ async function loadSubmitterNotes() {
 }
 async function saveSubmitterNotes(data) {
   await fs.writeFile(ADMIN_SUBMITTER_NOTES_PATH, JSON.stringify(data, null, 2));
+}
+
+async function loadAdminList() {
+  try { return JSON.parse(await fs.readFile(ADMIN_LIST_PATH, 'utf8')); } catch { return { t1: [], t2: [] }; }
+}
+async function saveAdminList(data) {
+  await fs.writeFile(ADMIN_LIST_PATH, JSON.stringify(data, null, 2));
+}
+
+async function loadUserPlays() {
+  try { return JSON.parse(await fs.readFile(USER_PLAYS_PATH, 'utf8')); } catch { return {}; }
+}
+async function saveUserPlays(data) {
+  await fs.writeFile(USER_PLAYS_PATH, JSON.stringify(data, null, 2));
+}
+
+async function getAdminTier(email) {
+  const e = email.toLowerCase();
+  if (ADMIN_T2_EMAILS.includes(e)) return 2;
+  if (ADMIN_T1_EMAILS.includes(e)) return 1;
+  const list = await loadAdminList();
+  if ((list.t2 || []).map(x => x.toLowerCase()).includes(e)) return 2;
+  if ((list.t1 || []).map(x => x.toLowerCase()).includes(e)) return 1;
+  return 0;
 }
 
 const SHOP_ITEM_FIELDS = {
@@ -340,11 +368,14 @@ async function loadShopItemsFromAirtable() {
 }
 
 async function loadShopItems() {
-  const airtableItems = await loadShopItemsFromAirtable();
-  if (airtableItems !== null) {
-    await saveShopItemsLocal(airtableItems);
-    return airtableItems;
-  }
+  try {
+    const airtableItems = await loadShopItemsFromAirtable();
+    if (airtableItems !== null) {
+      await saveShopItemsLocal(airtableItems).catch(() => {});
+      return airtableItems;
+    }
+  } catch {}
+  // Always fall back to local cache / defaults if Airtable fails for any reason
   return loadShopItemsLocal();
 }
 
@@ -1289,6 +1320,42 @@ app.post('/api/user/plays', async (req, res) => {
   }
 });
 
+app.post('/api/admin/admins/list', async (req, res) => {
+  const admin = await checkAdmin(req, res, 2);
+  if (!admin) return;
+  const list = await loadAdminList();
+  return res.json({ success: true, t1: list.t1 || [], t2: list.t2 || [], envT1: ADMIN_T1_EMAILS, envT2: ADMIN_T2_EMAILS });
+});
+
+app.post('/api/admin/admins/add', async (req, res) => {
+  const admin = await checkAdmin(req, res, 2);
+  if (!admin) return;
+  const { email, tier } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  const t = Number(tier) === 2 ? 2 : 1;
+  const list = await loadAdminList();
+  const e = email.toLowerCase();
+  list.t1 = (list.t1 || []).filter(x => x.toLowerCase() !== e);
+  list.t2 = (list.t2 || []).filter(x => x.toLowerCase() !== e);
+  if (t === 2) list.t2.push(e);
+  else list.t1.push(e);
+  await saveAdminList(list);
+  return res.json({ success: true, t1: list.t1, t2: list.t2 });
+});
+
+app.post('/api/admin/admins/remove', async (req, res) => {
+  const admin = await checkAdmin(req, res, 2);
+  if (!admin) return;
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  const e = email.toLowerCase();
+  const list = await loadAdminList();
+  list.t1 = (list.t1 || []).filter(x => x.toLowerCase() !== e);
+  list.t2 = (list.t2 || []).filter(x => x.toLowerCase() !== e);
+  await saveAdminList(list);
+  return res.json({ success: true, t1: list.t1, t2: list.t2 });
+});
+
 app.post('/api/admin/user-projects', async (req, res) => {
   if (!await checkAdmin(req, res)) return;
   try {
@@ -1620,7 +1687,7 @@ app.post('/api/user/projects/save', async (req, res) => {
 app.get('/api/shop/items', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    const items = (await loadShopItems()).filter(i => i.active !== false);
+    const items = (await loadShopItems()).filter(i => i.active !== false && i.title && i.minPlayers > 0);
     return res.json({ success: true, items, coinsPerHour: COINS_PER_HOUR, storage: AIRTABLE_PAT ? 'airtable' : 'local' });
   } catch (err) {
     return res.status(500).json({ error: err.message });

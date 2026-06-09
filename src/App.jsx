@@ -1885,7 +1885,7 @@ import {
                 {/* Comments */}
                 <div>
                   <h2 style={{ fontFamily: "'Press Start 2P'", fontSize: '11px', color: AMBER, marginBottom: '16px', lineHeight: 1.6 }}>
-                    💬 Comments
+                     Comments
                   </h2>
                   <GameComments gameId={game.id} user={user} />
                 </div>
