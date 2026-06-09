@@ -3876,7 +3876,7 @@ import {
       );
     }
 
-    const EMPTY_SHOP_ITEM = { title: '', desc: '', coins: 0, minPlayers: 10, image: '', active: true };
+    const EMPTY_SHOP_ITEM = { title: '', desc: '', coins: 0, minPlayers: 0, image: '', active: true };
     // 20 coins/hr × $5/hr wage → $1 = 4 coins
     const COINS_PER_DOLLAR = 4;
 
@@ -4027,8 +4027,14 @@ import {
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>Min players</label>
-                <input type="number" min="0" value={form.minPlayers} onChange={e => setForm(f => ({ ...f, minPlayers: Number(e.target.value) }))} style={fieldStyle} />
+                <label style={labelStyle}>Tier (min players)</label>
+                <select value={form.minPlayers} onChange={e => setForm(f => ({ ...f, minPlayers: Number(e.target.value) }))} style={fieldStyle}>
+                  <option value={0}>Tier 1 — 0 players (free)</option>
+                  <option value={5}>Tier 2 — 5 players</option>
+                  <option value={10}>Tier 3 — 10 players</option>
+                  <option value={20}>Tier 4 — 20 players</option>
+                  <option value={40}>Tier 5 — 40 players</option>
+                </select>
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>Image path (e.g. /shop-steam-giftcard.png)</label>
