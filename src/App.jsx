@@ -2726,9 +2726,10 @@ import {
     ];
 
     // Arcade page — cracked underground floor (7 frames)
+    // Ladybug climbs bottom-right → top-right; ant descends top-left → bottom-left
     const ARCADE_FRAMES = [
-      'arcade-bg-0.png','arcade-bg-1.png','arcade-bg-2.png','arcade-bg-3.png',
-      'arcade-bg-4.png','arcade-bg-5.png','arcade-bg-6.png',
+      'arcade-bg-3.png','arcade-bg-2.png','arcade-bg-1.png','arcade-bg-0.png',
+      'arcade-bg-5.png','arcade-bg-4.png','arcade-bg-6.png',
     ];
 
     // Terrain layers per page/altitude
