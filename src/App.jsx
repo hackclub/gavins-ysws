@@ -2843,8 +2843,8 @@ import {
     const ABOVE_GROUND = new Set(['home','shop','faq','tutorial','guidelines']);
     const ALT_LEVEL    = { below: 0, above: 1, space: 2 };
     const altOf        = p => p === 'admin' ? 'space' : ABOVE_GROUND.has(p) ? 'above' : 'below';
-    // Home, FAQ, Admin, and Arcade each have their own unique terrain; all others share their altitude's terrain
-    const terrainOf = p => p === 'home' ? 'home' : p === 'faq' ? 'faq' : p === 'admin' ? 'admin' : p === 'arcade' ? 'arcade' : altOf(p);
+    // Home, FAQ, Admin, Arcade, and Guidelines each have their own unique terrain; all others share their altitude's terrain
+    const terrainOf = p => p === 'home' ? 'home' : p === 'guidelines' ? 'home' : p === 'faq' ? 'faq' : p === 'admin' ? 'admin' : p === 'arcade' ? 'arcade' : altOf(p);
 
     // Sky layers (fixed, never slide — one per altitude, fade between them)
     const SKY_ABOVE = { file: 'bg2-layer-0.png', op: 0.50 };
